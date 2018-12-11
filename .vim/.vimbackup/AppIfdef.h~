@@ -1,0 +1,98 @@
+/*
+******************************************************************************
+*    file name   : AppIfdef.h
+*    language    : HITACHI SHC
+*    tab size    : 4
+*    Descripton  : Application Ifdefine Management Header
+*
+*    Copyright   (c) KOMATSU System Development Center
+*****************************************************************************
+*
+* 
+* 制御ロジック関係のifdef用のdefineはここで一括宣言することとする。
+* (各ファイルで宣言され、管理漏れとなるのを防ぐ)
+* テストやデバッグ用のdefineもここで宣言する。
+* 量産時に消せないdefineは制御上必要となるロジックなのでifdef削除するべきである 
+*
+*/
+
+#ifndef _APP_IFDEF_H_
+#define _APP_IFDEF_H_
+
+/**** Macro definitions ****/
+
+//REQUEST_VERSION_MSG,VERSION_INFO_MSG のフォーマット変更
+//AHX10が対応したら、宣言すること
+//#define _VERSION_REQ_MSG_PROTCOL_CHECK_ORG_
+//#define _VERSION_INFO_MSG_PROTCOL_CHECK_ORG_
+
+#define  _CLIP_AREA_EXTEND_
+
+// U48はStabilityでも下記定義を消さない(正式リリース時は消す)
+//#define __SAFE_UNDER_DEVELOPMENT__
+
+/**** 以下、テストやデバッグ用のDefine ****/
+
+//#define _SELF_VOLT_CHECK_DEBUG
+
+//#define _DEBUG_BRAKE_CONTROL
+
+//#define _DEBUG_EGRUNSIG
+
+//#define _DEBUG_ENGINESTART
+
+//#define _DEBUG_HEADLIGHT
+
+//#define _DEBUG_HORN
+
+//#define _DEBUG_PATOLIGHT
+
+//#define _DEBUG_PARKING_BRAKE
+
+//#define _DEBUG_TURNLIGHT
+
+//#define _LUX_RECOG_PRINTF_
+
+//#define _LUX_ANGLE_CALIB_DEBUG_
+
+//#define _FURUKAWA_DIAG_DEBUG_
+
+//#define LUX_MANAGER_DEBUG
+
+//#define _SHOW_LUX_POWER_INFO_
+
+//#define _MACOM_PRINTF_
+
+//#define _DEBUG_SAFE_ZONE
+
+//#define _SRR_ANGLE_CALIB_DEBUG_
+
+//#define _SRR_ANGLE_CALIB_DEBUG_
+
+//#define _MACOM_RECOG_PRINTF_
+
+//#define _MACOM_RECOG_DEBUG_
+
+//#define _TOUCH_HIT_PRINTF_
+
+//#define _DEBUG_SF_MAINTENANCE_
+
+//#define _ACC3_ANGLE_CALIB_DEBUG_
+
+//#define _BLINDRUN_DEBUG_
+
+//#define _ERROR_SPEED_DEBUG
+
+//#define DEBUG_SF_EMERGENCY_STOP_CHECK_
+
+//#define DEBUG_SAFE_SPEED_CHECK__
+
+//#define _DEBUG_AHSRPC
+
+//#define _DEBUG_NVRAM
+
+//#define _DEBUG_SHOW_CLIPPING_WIDTH
+
+#endif // _APP_IFDEF_H_
+
+/* end of file */

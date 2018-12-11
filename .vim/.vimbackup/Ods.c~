@@ -1,0 +1,102 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2006 Komatsu Ltd. All rights reserved.
+ * 
+ *  $RCSfile: Ods.c,v $
+ * $Revision: 1.1.1.1 $
+ *   $Author: tojima $
+ *     $Date: 2005/07/06 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: ODSモジュール
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+#include "ahscommon.h"
+#include "Ods.h"
+#include "OdsScope.h"
+#include "Acc3Manager.h"
+#include "ObstacleRecognition.h"
+#include "ClippingAreaManager.h"
+#include "VirtualBank.h"
+#include "OdsDisable.h"
+#include "TestCode.h"
+#include "Thresholding.h"
+#include "TrajDirection.h"
+#include "ibeoclipping.h"
+#include "ObstReport.h"
+
+//---------------------------------------------------------------------------
+/** 
+ * ODSモジュールの初期化
+ */
+//---------------------------------------------------------------------------
+void Ods_Init(void)
+{
+    Thresholding_Init();
+    Bank_Init();
+    Acc3Manager_Init();
+    ClippingArea_Init();
+    
+    OdsScope_Init();
+    ObstRecog_Init();
+    OdsDisable_Init();
+    TrjDir_Init();
+    FurukawaClip_Init();
+    ObstReport_Init();
+}
+//---------------------------------------------------------------------------
+/** 
+ * ODSモジュールのメインルーチン（入力系、前処理部）
+ */
+//---------------------------------------------------------------------------
+void Ods_PreMain(void)
+{
+    Acc3Manager_PreMain();
+}
+//---------------------------------------------------------------------------
+/** 
+ * ODSモジュールのメインルーチン
+ */
+//---------------------------------------------------------------------------
+void Ods_Main(void)
+{
+	TestCode_SetNumber(20060);
+
+    OdsScope_Main();
+	TestCode_SetNumber(20061);
+
+    TestCode_SetNumber(20062);
+
+	TrjDir_Main();
+    ClippingArea_Main();
+	TestCode_SetNumber(20063);
+
+	TestCode_SetNumber(20064);
+
+    Acc3Manager_Main();
+	TestCode_SetNumber(20065);
+
+    ObstRecog_Main();
+	TestCode_SetNumber(20066);
+
+    ObstReport_Main();
+
+    OdsDisable_Main();
+	FurukawaClip_Main();
+
+}
+//---------------------------------------------------------------------------
+/** 
+ * ODSモジュールのメインルーチン（出力系、後処理部）
+ */
+//---------------------------------------------------------------------------
+void Ods_PostMain(void)
+{
+	TestCode_SetNumber(20067);
+
+    Acc3Manager_PostMain();
+}
+

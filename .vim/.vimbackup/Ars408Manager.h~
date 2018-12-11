@@ -1,0 +1,111 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2009 Komatsu Ltd. All rights reserved.
+ * 
+ *    $RCSfile: Ars408Manager.h,v $
+ *    $Revision: 1.1.1.1 $
+ *    $Author: tojima $
+ *    $Date: 2009/09/15 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Communication module with LUX
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#ifndef ___CONTI_MANAGER_H___
+#define ___CONTI_MANAGER_H___
+
+#include "kcommon.h"
+#include "rpc_api.h"
+#include "Ars408.h"
+
+
+/**
+ * 初期化
+ */
+extern void Ars408Manager_Init(void);
+
+/**
+ * メイン
+ */
+extern void Ars408Manager_PreMain(void);
+extern void Ars408Manager_Main(void);
+extern void Ars408Manager_PostMain(void);
+
+/**
+ * RPC受信用コールバック関数
+ */
+extern void Ars408Manager_ReceiveStatusMsg(const rpc_T *rpc);
+extern void Ars408Manager_ReceiveClippedTargetMsg(const rpc_T *rpc);
+
+/**
+ * レーダ使用/無視
+ */
+extern void Ars408Manager_Enable(void);
+extern void Ars408Manager_Disable(void);
+
+/**
+ * 故障診断 有効/無効
+ */
+extern void Ars408Manager_DiagnosisEnable(void);
+extern void Ars408Manager_DiagnosisDisable(void);
+
+/**
+ *
+ */
+extern bool Ars408Manager_IsArs408Operated(void);
+
+/**
+ *
+ */
+extern sint16 Ars408Manager_GetTargetNum(void);
+
+/**
+ *
+ */
+extern StructArs408TargetInfo* Ars408Manager_GetTarget(sint16 index);
+
+
+/**
+ *
+ */
+extern 
+
+/**
+ * クリッピングされたターゲットがあるかどうか
+ */
+extern bool Ars408Manager_GetTargetValidFlag(void);
+
+/**
+ * クリッピングされたターゲットのうち、最短距離
+ */
+extern sint32 Ars408Manager_GetClosestRange(void);
+extern sint16 Ars408Manager_GetClosestTargetIndex(void);
+
+/**
+ * レーダインストールされているかどうか
+ */
+extern bool Ars408Manager_isRadarAvailable(void);
+
+/**
+ *
+ */
+extern void Ars408Manager_SetDebugFlag(bool flag);
+extern bool Ars408Manager_GetDebugFlag(void);
+
+/**
+ * LUXが正常かどうか
+ */
+extern bool Ars408Manager_Ars408IsHealthy(void);
+
+extern bool Ars408Manager_GetArs408Ready(void);
+
+extern uint16 Ars408Manager_GetErrMsgRecieveCounter(void);
+
+
+#endif // ___CONTI_MANAGER_H___
+
+

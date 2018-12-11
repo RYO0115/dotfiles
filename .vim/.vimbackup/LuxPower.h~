@@ -1,0 +1,72 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2006 Komatsu Ltd. All rights reserved.
+ * 
+ *  $RCSfile: Mmr1cPower.h,v $
+ * $Revision: 1.1.1.1 $
+ *   $Author: tojima $
+ *     $Date: 2005/07/06 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: ODS Power Supply ON/OFF Control
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#ifndef __LUX_POWER_H__
+#define __LUX_POWER_H__
+
+#include "kcommon.h"
+#include "ahscommon.h"
+#include "rpc_api.h"
+
+// -----------------------------------------------------
+// PUBLIC関数の定義
+// -----------------------------------------------------
+/** 
+ * デバッグ
+ */
+extern void Mmr1cPower_ShowInfo(void);
+
+/** 
+ * 初期化
+ */
+extern void Mmr1cPower_Init(void);
+
+/** 
+ * メイン
+ */
+extern void Mmr1cPower_Main(void);
+extern void Mmr1cPower_PostMain(void);
+
+/** 
+ * ODSパワーのON/OFF要求のセット
+ */
+extern void Mmr1cPower_On(void);
+extern void Mmr1cPower_Off(void);
+extern void Mmr1cPower_Cycle(void);
+extern void Mmr1cPower_CycleRpc(rpc_T* rpc);
+
+/** 
+ * @param 
+ * @return
+ */
+extern AhsIoError Mmr1cPower_GetDiagnosis(void);
+
+/** 
+ * @param 
+ * @return エンジン停止リレーへの出力 (ON/OFF)
+ */
+extern bool Mmr1cPower_GetOutput(void);
+
+/**
+ * @retval TRUE  LUXODS電源あり
+ * @retval FALSE LUXODS電源なし
+ */
+extern bool Mmr1cPower_isAvailable(void);
+
+extern bool Mmr1cPower_GetMmr1cPower(void);
+
+#endif ///#ifndef __ODS_POWER_H__

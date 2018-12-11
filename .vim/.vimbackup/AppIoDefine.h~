@@ -1,0 +1,60 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2005 Komatsu Ltd. All rights reserved.
+ * 
+ * $RCSfile: AppIoDefine.h,v $
+ * $Revision: 1.1.1.1 $
+ * $Author: tojima $
+ * $Date: 2005/07/06 06:36:19 $
+ * $State: Exp $
+ *
+ * @brief: Definition of Safety Controller Input/Output
+ * Ver2.0B(930E/830E), 
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#ifndef   IO_DEFINE_H_
+#define   IO_DEFINE_H_
+
+#include "ahscommon.h"
+
+
+// Digital INPUT (ON/OFF入力 パルス入力)
+#define   DIN_FIRE_NC                   D_IN_4
+#define   DIN_FIRE_NO                   D_IN_5
+#define   DIN_HEARTBEAT_FROM_DRIVE      D_IN_6
+#define   DIN_IDENTIFIER1               D_IN_7
+#define   DIN_SWITCH_AUTO               D_IN_28
+#define   DIN_SWITCH_MANUAL             D_IN_29
+#define   DIN_IDENTIFIER2               D_IN_32
+
+
+// Digital OUTPUT (比例ソレノイド出力)
+#define   DOUT_TURN_RIGHT               SOL_OUT_0
+#define   DOUT_LUX_POWER                SOL_OUT_1
+#define   DOUT_TURN_LEFT                SOL_OUT_2
+#define   DOUT_ENGINE_START             SOL_OUT_3
+#define   DOUT_PATOLIGHT_GREEN          SOL_OUT_4
+#define   DOUT_PATOLIGHT_YELLOW         SOL_OUT_5
+#define   DOUT_PATOLIGHT_RED            SOL_OUT_6
+#define   DOUT_HEADLIGHT                SOL_OUT_7
+#define   DOUT_HORN                     SOL_OUT_8
+#define   DOUT_HEART_BEAT_TO_DRIVE      SOL_OUT_9
+#define   DOUT_HEADLIGHT_HI             SOL_OUT_10A
+#define   DOUT_RADAR_POWER              SOL_OUT_10B
+
+
+// Digital OUTPUT (ON/OFF出力 パルス出力)
+#define   DOUT_PARKING_BRAKE            SIG_OUT_1
+
+
+// Analog INPUT (A/D入力)
+#define   AIN_ALT_R                     A_IN_0
+#define   AIN_OBSERVER_STATUS_SIG       A_IN_1
+#define   AIN_REG_BANK_SENSOR           A_IN_10
+
+#endif ///#ifndef IO_DEFINE_H_
+

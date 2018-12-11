@@ -1,0 +1,348 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2005 Komatsu Ltd. All rights reserved.
+ * 
+ *  $RCSfile: RpcNoDefine.h,v $
+ * $Revision: 1.1.1.1 $
+ *   $Author: tojima $
+ *     $Date: 2005/07/06 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Definition of RPC No.
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#ifndef _RPCNO_DEFINITION_H
+#define _RPCNO_DEFINITION_H
+
+// Startup Protocol
+#define REQUEST_VERSION_MSG             0x8100
+#define VERSION_INFO_MSG                0x8101
+#define DRIVE_INFO_MSG                  0x8102
+#define SAFETY_INFO_MSG                 0x8103
+#define SUPERVISOR_INFO_MSG             0x8104
+
+// Emergency Stop
+#define A_EMERGENCY_STOP                0x8000
+#define A_EMERGENCY_IMMEDIATELY         0x8001
+#define A_EMERGENCY_SLOWLY              0x8002
+
+// Heart Beat
+#define A_HEART_BEAT                    0x8040
+
+// Error/Warning Report
+#define ERROR_REPORT_MSG                0x8160
+#define LH_WARNING_CODE                 0x8161
+#define LH_WARNING_CLEAR                0x8162
+#define S_OBSTPOS_INFO                  0x8163
+#define N_FIRE_SUPPRESS_ACTIVE          0x8165
+#define KDISP_ERR                       0x83B0  // display error message
+
+// OpMode
+#define A_STOP_EG                       0x8320  //エンジン停止指令
+#define A_AUTO_ORDER                    0x8321  // S->A
+#define A_SUSPEND_ORDER                 0x8322  // A->S
+#define A_DRIVE_ERROR_CANCEL            0x8323  // Error Cancel
+#define A_START_EG                      0x8324  // エンジン起動指令
+//#define A_SAFETY_ERROR_CANCEL         0x8324  // Error Cancel
+
+// Dry Run
+#define A_DRYRUN_ORDER                  0x8330  // Dry Run
+#define LH_DRYRUN_STATUS                0x8331
+#define A_DRYRUN_SPEED_LIMIT            0x8332  /* limit max speed ( 0-50 ) */
+
+// LH Status report
+#define N_DRIVE_STATUS                  0x8170
+#define S_SAFETY_STATUS                 0x8171
+
+// Vehicle Control
+#define A_LH_TRAJECTORY_DATA            0x8200
+#define A_LH_SPEED_PROFILE              0x8201
+#define A_LH_TRAJECTORY_RESET_MSG       0x8202
+#define N_TRAJECTORY_STATUS             0x8203
+#define S_TRAJECTORY_STATUS             0x8204
+#define A_SET_AJUSTED_REPORT_TIMING     0x8205
+#define N_ADJUSTED_POSITION_MSG         0x8206
+
+#define A_BEHAVIOR_DATA_MSG             0x8220
+#define A_BEHAVIOR_RESET_MSG            0x8221
+#define N_BEHAVIOR_STATUS_MSG           0x8222
+
+// 始業点検
+#define SET_INSP_STATUS_DRIVE           0x8390
+#define SET_INSP_STATUS_SAFE            0x8391
+#define INSP_STATUS_DRIVE               0x8392
+#define INSP_STATUS_SAFE                0x8393  // 始業点検状況の送信
+#define INSP_COMMAND                    0x8394  // 始業点検コマンド
+#define INSP_ACK                        0x8395
+#define INSP_RESULT                     0x8396
+#define INSP_REG_INSP_PROGRESS          0x8397
+#define INSP_ODS_TARGET_RANGE           0x8398
+#define INSP_CAUTION_PANEL              0x8399
+#define INSP_CAUTION_FAILURE            0x839A
+//#define INSP_ODS_TARGET_RANGE2        0x839B
+#define INSP_ODS_TARGET_DISTANCE        0x839B
+
+// メンテナンス
+#define MNT_COMMAND                     0x83A0  // メンテナンスコマンド
+#define MNT_ACK                         0x83A1
+#define MNT_RESULT                      0x83A2
+#define MNT_PROGRESS                    0x83A3
+#define MNT_GPS_ORIGIN_INFO             0x83A4
+#define MNT_DRIVE_NVRAM                 0x83A5
+#define MNT_SAFE_NVRAM                  0x83A6
+
+// Drive -> Safety
+#define N_POSITION                      0x8800  // position data
+#define N_HEART_BEAT                    0x8A01
+
+// トラックデータ用
+#define RPC_CR_AHS_ORDER_VALUE          0x8A03	//TBD
+#define RPC_CR_AHS_TRUCK_DATA1          0x8A04
+#define RPC_CR_AHS_TRUCK_DATA2          0x8A05
+#define RPC_CR_AHS_TRUCK_DATA3          0x8A06
+#define RPC_CR_AHS_FAULT                0x8A07
+
+// Truck Model
+#define TRUCK_IDENTIFIER_REQ            0x8801
+#define TRUCK_IDENTIFIER_INFO           0x8802
+#define TRUCK_TYPE_SET_REQ              0x8803
+#define TRUCK_TYPE_RESULT               0x8804
+#define TRUCK_AUX_DEVICE_SET            0x8805
+#define TRUCK_AUX_DEVICES_INFO          0x8806
+#define TRUCK_AUX_DEVICES_REQ           0x8807
+#define TRUCK_AUX_DEVICES_SET           0x8808
+#define RPC_SERIVICE_ADJUST             0x8809 // service adjust の設定値
+
+// GPS
+#define CAN_GPS_DATA                    0x1042 
+#define GPS_RESET_REQ                   0x8572  // GPS reset request
+#define GPS_MONITOR_INFO_MSG            0x8051
+
+/* For testing screen */  /* 0x8400-0x84FF */
+#define A_REG_ONOFF                     0x8401  /* REG enable/disable ( 0→disable 1→enable ) */
+#define A_SPEED_LIMIT                   0x8402  /* limit max speed ( 0-50 ) */
+#define A_FOOTBRAKE                     0x8403  /* foot brake disable/enable ( 0→disable 1→enable ) */
+#define A_GST_THRESH                    0x8404  /* change GST threshold ( mm ) */
+#define A_FLIGHT_RECORDER               0x8406  /* get flight recorder data */
+
+// GAINSEND RPC(for test)
+#define GAINSHOW0                       0x89E0
+#define GAINSHOW1                       0x89E1
+#define GAINSHOW2                       0x89E2
+#define GAINSHOW3                       0x89E3
+#define GAINSHOW4                       0x89E4
+#define GAINSHOW5                       0x89E5
+#define GAINSEND0                       0x89F0
+#define GAINSEND1                       0x89F1
+#define GAINSEND2                       0x89F2
+#define GAINSEND3                       0x89F3
+#define GAINSEND4                       0x89F4
+#define GAINSEND5                       0x89F5
+#define GAINSEND6                       0x89F6
+#define GAINSEND7                       0x89F7
+#define GAINSEND8                       0x89F8
+#define GAINSEND9                       0x89F9
+#define GAINSENDa                       0x89FA
+#define GAINSENDb                       0x89FB
+#define GAINSENDc                       0x89FC
+#define GAINSENDd                       0x89FD
+#define GAINSENDe                       0x89FE
+#define GAINSENDf                       0x89FF
+#define GAINDISP                        0x89E6
+
+// BENCH用
+#define REQ_INITIAL_POSITION            0x8900
+#define INITIAL_POSITION                0x8901
+
+// Safety    -> Drive
+#define S_SPEED_ORDER                   0x8A00  // speed order to Drive
+#define S_HEART_BEAT                    0x8A01  // CAN-A Heartbeat
+#define S_PB_CHECK_ORDER                0x8A02  // Parking Brake Check for E/G Stop
+
+
+// REG
+#define S_REG_DISTANCE                  0x8A90
+#define S_REG_ERROR                     0x8A91
+#define N_REG_COMMAND                   0x8A92
+#define S_REG_ACK                       0x8A93
+
+// Command
+#define A_HEADLIGHT_ON                  0x8A80  // Head Light and Hi BeamON
+#define A_HEADLIGHT_OFF                 0x8A81  // Head Light and Hi Beam OFF
+#define A_RADAR_RESET                   0x8A82  // Radar Power Reset
+#define N_HORN_ORDER                    0x8A83
+#define N_HORN_ORDER_DRIVE              0x8A84
+#define A_ODS_ONOFF                     0x8A85  // ODS disable/enable
+//#define A_START_EG                    0x8A86  // エンジン起動指令
+#define A_VHMS_ONOFF                    0x8A87 
+#define A_CAUTIONPANEL_ONOFF            0x8A88 
+#define A_ALL_MODELAMP_ON               0x8A89  // 始業点検用全パトライト点灯
+#define A_HEADLIGHT_HI_ON               0x8A8A  // High Beam  ON
+#define A_HEADLIGHT_HI_OFF              0x8A8B  // High Beam  OFF
+#define A_STEER_RADAR                   0x8BF0  // SAFESEND0
+#define A_TURNLIGHT_ONOFF               0x8BF1  // TurnLight 1:R 2:L 3:Both 0:OFF
+
+
+// マスクセットRPC
+#define SETMASK                         0x8B80
+#define DELETEMASK                      0x8B81
+#define MASKRESULT                      0x8B82
+#define MASK_STARTUP                    0x8B83
+#define MASKDATA_REQ                    0x8B84
+#define MASKLIST                        0x8B85
+#define MASKLIST_REPLY                  0x8B86
+
+// ACC3
+#define ACC3_TRACK_REQ                  0x8B20
+#define ACC3_TRACK_MSG                  0x8B21
+#define ACC3_SERIAL_NO_REQ              0x8B22
+#define ACC3_SERIAL_NO                  0x8B23
+#define ACC3_SERVICE                    0x8B24
+#define ACC3_YAW_RATE                   0x8B25
+#define ACC3_CALIB_PARAM                0x8B26
+
+// K-menu test command
+#define SAFETEST0                       0x8BE0
+#define SAFETEST1                       0x8BE1
+#define SAFETEST2                       0x8BE2
+#define SAFETEST3                       0x8BE3
+#define SAFETEST4                       0x8BE4
+#define SAFETEST5                       0x8BE5
+#define SAFESEND0                       0x8BF0
+#define SAFESEND1                       0x8BF1
+#define SAFESEND2                       0x8BF2  // レーダ選択、見とおし距離入力
+#define SAFESEND3                       0x8BF3  // コース幅入力
+#define SAFESEND4                       0x8BF4  // 始業点検デバッグ 
+#define SAFESEND5                       0x8BF5  // マスク関数デバッグ
+#define SAFESEND6                       0x8BF6  // 機能制限
+#define SAFESEND7                       0x8BF7  //         
+#define SAFESEND8                       0x8BF8  // 最高速度制限
+#define SAFESEND9                       0x8BF9  // NVRAM入力
+#define SAFESENDa                       0x8BFa  // For Toji
+#define SAFESENDb                       0x8BFb  // モニパソフォーマット選択
+#define SAFESENDc                       0x8BFc  // not used
+#define SAFESENDd                       0x8BFd  // not used
+#define SAFESENDe                       0x8BFe  // not used
+#define SAFESENDf                       0x8BFf  // not used
+
+// SupportTool
+#define PDA_LH4COMMAND                  0x8C00
+#define PDA_LH5COMMAND                  0x8C01
+#define LH_PDACOMMAND2                  0x8C02
+#define LH_PDACOMMAND4                  0x8C03
+#define LH_PDACOMMAND8                  0x8C04
+#define LH_PDACOMMAND16                 0x8C05
+#define LH_PDACOMMAND32                 0x8C06
+#define LH_PDACOMMAND64                 0x8C07
+
+
+//Furukawa Rader MMR1C
+#define MMR1C_TRACK_REQ					0x8C30	//古河レーダ利用時稼動要求フラグ
+#define MMR1C_TRACK_MSG					0x8C31	//古河レーダ検知点データ
+#define MMR1C_STATUS_MSG				0x8C32	//古河レーダステータスデータ
+#define MMR1C_DEBUG_MSG                   0x8B39 //LUX_DEBUG_MSGをそのまま引き継ぎ
+
+//Continental ARS408 Rader
+#define ARS408_TRACK_REQ				0x8C40	//Continentalレーダ利用時稼働要求フラグ
+#define ARS408_TRACK_MSG				0x8C41	//Continentalレーダ検知店データ
+#define ARS408_STATUS_MSG				0x8C42	//Continentalレーダステータスデータ
+#define ARS408_RADAR_CFG				0x8c43  //Continentalレーダコンフィグ
+
+// MBIハートビート 
+#define RPC_MBI_HEARTBEAT               0x8AF1
+#define CHANGE_MBI_INTERVAL             0x8AF2  // MBIのﾃﾞｰﾀ送信ﾀｲﾐﾝｸﾞの変更
+
+// PLM3
+#define PLM3_REALTIME_DATA              0xD1B5
+#define START_PLM3_DATA                 0xD1B3
+#define STOP_PLM3_DATA                  0xD1B4
+#define PLM3_STATUS_REQUEST             0xD141
+#define PAYLOAD_INFO_MSG                0x85EF
+#define SEND_PLM3_START                 0x8762  // ベンチ用
+
+// Interface Module
+#define START_IM_DATA                   0xD1C0
+#define STOP_IM_DATA                    0xD1C1
+#define IM_REALTIME_DATA                0xD1C2
+#define START_IM_INDICATOR_DATA         0xD1D0
+#define STOP_IM_INDICATOR_DATA          0xD1D1
+#define IM_INDICATOR_DATA               0xD1D2
+
+#define IM_BROADCAST_DATA               0xD411
+//#define DISPATCH_REALTIME_PACKET      0xD411  // Dispatch Real Time Packet
+
+//VHMS
+#define VSM_GET_SMR                     0xC212
+
+// Auti-Rutting
+#define OFFSET_TRAVEL_MSG               0x8207
+#define OFFSET_TRAVEL_MSG_ACK           0x8208
+#define OFFSET_EXPECTED_INDEX_MSG       0x8209
+#define OFFSET_COMPLETED_MSG            0x820A
+#define OFFSET_CANCEL_MSG               0x820B
+
+// Release Check
+#define IS_RELEASE_READY                0x8910
+#define RELEASE_RESULT                  0x8911
+
+// Monitor
+#define CR_MONITOR_COMMAND              0x8C11
+#define CR_MONITOR_DATA                 0x8C10
+#define CR_ASK_VERSION                  0x8C12
+#define CR_ANSWER_VERSION               0x8C13
+#define MOTOR_ANGLE_DATA                0x8C14  //MBI→安全コン回転機構の角度データ
+#define GET_MOTOR_ANGLE_DATA            0x8C15  //MBI→安全コン回転機構の角度データ
+#define GET_FR_POWER_ERROR              0x8C16  //FR powerエラーコードのリクエスト
+#define SEND_FR_POWER_ERROR             0x8C17  //FR powerエラーコードの送信
+
+// 設定
+#define NV_RAM_CLEAR                    0x8C20
+
+// デバッグ用スペシャルRPC
+#define CAN_PRINTF                      0x8C08
+
+#define SF_CLIPPING_AREA                0x8C09
+#define SF_MOTOR_ANGLE                  0x8C25
+#define TRUE_TRUCK_POS                  0x8C26
+#define SF_SAFETY_ZONE                  0x8C28
+
+// LUX用
+#define CR_CAN_STATUS                   0x8B35  // 
+#define LUX_TRACK_HEADER                0x8B30  // LBI->Safety (テスト用、使っていない)
+#define LUX_TRACK_MSG                   0x8B31  // LBI->Safety (テスト用、使っていない)
+#define LUX_ERROR_MSG                   0x8B32  // LBI->Safety
+#define LUX_SYNC_MSG                    0x8B33  // Safety->LBI
+#define LUX_SERVICE                     0x8B34  // Safety->LBI
+#define LUX_CLIP_TRACK_MSG              0x8B36  // LBI->Safety
+#define LUX_CALIB_PARAM_REQ             0x8B37  // LBI->Safety
+#define LUX_CALIB_PARAM                 0x8B38  // Safety->LBI
+
+#define LUX_DEBUG_MSG                   0x8B39 
+#define LUX_COMMAND_SET                 0x8B3A  
+#define CAN_LOG_DOWNLOAD                0x8B3B  
+#define LUX_PARAM_UPDATED               0x8B3C
+
+// MACOM-Short Range Radar用
+#define MACOM_TRACK_MSG                 0x8B40  // SRBI->Safety
+#define MACOM_VERSION_MSG               0x8B41  // SRBI->Safety レーダのバージョン情報
+#define MACOM_VERSION_REQ               0x8B42  // Safety->SRBI レーダのバージョンリクエスト
+#define MACOM_SENSOR_MDOE               0x8B43  // Safety->SRBI レーダの計測モード指令
+#define MACOM_COM_STATUS                0x8B44  // SRBI->Safety
+#define MACOM_SERVICE                   0x8B45  // Safety->MACOM
+#define MACOM_DEBUG_MSG                 0x8B46
+
+// ランドマークナビ用のRPC
+#define LM_LIST_REQ                     0x8B50
+#define LM_LIST                         0x8B51
+#define LM_DATA_REQ                     0x8B52
+#define LM_DATA                         0x8B53
+
+// ランドマークナビ設定用
+#define LMN_SETUP                       0x8B90
+
+
+#endif ///#ifndef _RPCNO_DEFINITION_H

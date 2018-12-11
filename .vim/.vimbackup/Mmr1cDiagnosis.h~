@@ -1,0 +1,56 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2009 Komatsu Ltd. All rights reserved.
+ * 
+ *    $RCSfile: Mmr1cDiagnosis.c,v $
+ *    $Revision: 1.1.1.1 $
+ *    $Author: tojima $
+ *    $Date: 2009/09/15 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Communication module with MMR1C
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#ifndef ___MMR1C_DIAGNOSIS_H___
+#define ___MMR1C_DIAGNOSIS_H___
+
+#include "kcommon.h"
+#include "FurukawaCommon.h"
+#include "Mmr1cRpcDef.h"
+#include "Mmr1c.h"
+
+
+/**
+ *
+ */
+extern void Mmr1cDiagnosis_ReceiveError(
+      StructMmr1c *pMmr1c,      /**< MMR1Cオブジェクトのポインタ */
+      const uint8 *msg      /**< RPCメッセージバッファのポインタ */
+      );
+
+/**
+ *
+ */
+extern bool Mmr1cDiagnosis_CheckRbiReady(const StructMmr1c *pMmr1c);
+extern bool Mmr1cDiagnosis_CheckSafetyRbiCommunication(const StructMmr1c *pMmr1c);
+extern bool Mmr1cDiagnosis_CheckRbiNposition(const StructMmr1c *pMmr1c);
+
+
+extern bool Mmr1cDiagnosis_CheckMmr1cOperationMode(const StructMmr1c *pMmr1c);
+extern bool Mmr1cDiagnosis_CheckRbiMmr1cCommunication(const StructMmr1c *pMmr1c);
+extern bool Mmr1cDiagnosis_CheckTrackMsgCommunication(StructMmr1c *pMmr1c);
+
+/**
+ * 自己診断
+ */
+extern bool Mmr1cDiagnosis_SelfDiagnosisError1(const StructMmr1c *pMmr1c);
+
+
+#endif // ___MMR1C_DIAGNOSIS_H___
+
+
+

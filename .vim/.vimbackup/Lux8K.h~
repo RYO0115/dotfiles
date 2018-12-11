@@ -1,0 +1,162 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2009 Komatsu Ltd. All rights reserved.
+ * 
+ *    $RCSfile: Mmr1c8K.h,v $
+ *    $Revision: 1.1.1.1 $
+ *    $Author: tojima $
+ *    $Date: 2009/09/15 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Communication module with LUX
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#ifndef ___LUX_8K_H___
+#define ___LUX_8K_H___
+
+#include "kcommon.h"
+#include "FurukawaCommon.h"
+#include "Mmr1cRpcDef.h"
+
+/**
+ *
+ */
+typedef struct{
+	sint32 xpos;             /**< グローバル座標 [mm] */
+	sint32 ypos;             /**< [mm] */
+	sint32 range;            /**< [mm] */
+	sint16 speed;            /**< 速度 [0.1m/s] */
+	sint16 zone;             /**<      */
+	uint8  id;               /**< object ID */
+	uint8  power;            /**<  */
+} StructMmr1cTargetInfo;
+
+/**
+ *
+ */
+typedef struct{
+
+	// RPC受信バッファ
+	StructErrorDataMsg  error;
+	StructClipTargetMsg clipObject;
+
+	// クリッピングオブジェクト用バッファ
+	StructMmr1cTargetInfo target[MAX_LUX_OBJECTS];
+
+	Mmr1cPosition  pos;
+
+// 以下は不使用
+	StructPointDef basePos;      /**< 車両原点からのレーダの位置 */
+	StructPointDef globalPos;    /**< 車両原点からのレーダの位置 */
+
+	sint16  baseHeight;          /**< [mm] */
+	sint16  wheelBase;           /**< [mm] */
+
+	float32   baseX;               /**< 車両原点からのレーダの位置[mm] */
+	float32   baseY;               /**< 車両原点からのレーダの位置[mm] */
+	sint16  baseAngle;           /**< 基本取り付け角度オフセット [2pi/65536] */
+// ここまで
+
+
+	float32 cs;                  /**< レーダのグローバル方位角のCOS成分 */
+	float32 sn;
+	sint32  truckX;              /** [mm] */
+	sint32  truckY;              /** [mm] */
+
+	bool    valid;               /**< LUXが有効かどうか */
+	sint16  msgCounter;          /**< */
+	bool    comValid;            /**< */
+	bool    updated;             /**< */
+
+	bool    luxStart;            /**< LUXが起動したかどうか */
+	bool    lbiStart;            /**< LBIが起動したかどうか */
+
+	sint16  canComTimer;         /**< LBIと安全コンの通信タイマー */
+	sint16  trackRpcTimer;       /**< LBIと安全コンのターゲット情報のタイマー */
+
+	sint16  targetNum;           /**< LBIから送信される検知オブジェクト数 */
+
+	sint32  closestRange;        /**< 検知物体のうち、最短距離 */
+	sint16  closestIndex;        /**< 最短距離のターゲットのインデックス */
+
+	bool    healthy;
+
+	uint16  packetCounter;       /**< LBIと安全コン間のパケット数(0x8B32) */
+
+
+} StructMmr1c;
+
+
+/**
+ * 初期化
+ */
+extern void Mmr1c_Init(
+      StructMmr1c *pMmr1c, 
+      Mmr1cPosition pos, 
+      bool flag           /**< */
+     );
+
+/**
+ * メイン
+ */
+extern void Mmr1c_PreMain(
+      StructMmr1c *pMmr1c,       
+      sint32 truckX,         /**< 車両の位置 [mm] */
+      sint32 truckY,         /**< 車両の位置 [mm] */
+      sint16 truckDir,       /**< 車両の方位角 [1/65536] */
+      float32  cs,           /**< 方位角のCOS成分 */
+      float32  sn            /**< 方位角のSIN成分 */
+      );
+
+extern void Mmr1c_Main(
+      StructMmr1c *pMmr1c      /**< LUXオブジェクトのポインタ */
+      );
+      
+extern void Mmr1c_PostMain(
+      StructMmr1c *pMmr1c      /**< LUXオブジェクトのポインタ */
+      );
+
+/**
+ *
+ */
+void Mmr1c_ReceiveClippedTargetMsg(
+      StructMmr1c *pMmr1c,   /**< */
+      const uint8 *msg         /**< */
+      );
+
+/**
+ *
+ */
+extern StructMmr1cTargetInfo* Mmr1c_GetTrackData(
+    StructMmr1c *pMmr1c,   /**< */
+    sint16 index       /**< */
+    );
+
+/**
+ *
+ */
+extern void Mmr1c_SetBaseMmr1cXPos(
+     StructMmr1c *pMmr1c,  /**<  */
+     sint32 x          /**<  */
+     );
+extern void Mmr1c_SetBaseMmr1cYPos(
+     StructMmr1c *pMmr1c,  /**<  */
+     sint32 y          /**<  */
+     );
+extern void Mmr1c_SetBaseMmr1cTheta(
+     StructMmr1c *pMmr1c,  /**<  */
+     sint16 theta      /**<  */
+     );
+
+extern bool Mmr1c_IsReady(
+     const StructMmr1c *pMmr1c
+     );
+
+void Mmr1c_SetReady(StructMmr1c *pMmr1c, bool flag);
+
+#endif // ___LUX_8K_H___
+

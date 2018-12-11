@@ -1,0 +1,183 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2005 Komatsu Ltd. All rights reserved.
+ * 
+ *  $RCSfile: HD785Dimension.h,v $
+ * $Revision: 1.1.1.1 $
+ *   $Author: nishijima $
+ *     $Date: 2005/07/06 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: HD785 dimension
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#ifndef __HD785_DIMENSION_H_
+#define __HD785_DIMENSION_H_
+
+
+/******************************************************************************
+ *                           HD785 車格define宣言                              
+ * HD785 ｽﾍﾟｯｸ 
+ * 空車重量  73.568[t]  (アクスル改造により 73.44tから128㎏増) 
+ * 積車重量 164.568[t]  (アクスル改造により164.44tから128㎏増) 
+ * ﾀｲﾔ直径     1302[mm]
+ * ﾀｲﾔ幅        750[mm]
+ * Wheelbase   4950[mm]
+ ******************************************************************************/
+
+
+#define     _HD785_WHEEL_BASE                     4950 /* ホイールベース mm */
+#define     _HD785_EVW                          73.568 /* 空車重量 ton */
+#define     _HD785_GVW                         164.568 /* 積車重量 ton */
+#define     _HD785_UNSPRUNG_WEIGHT              25.628 /* ばね下重量 ton */
+#define     _HD785_LOAD                          91.00 /* 積載量   ton */
+#define     _HD785_ROLLING_RADIUS                 1302 /* タイヤ半径(27.00R49★★E4) mm */
+#define     _HD785_MAX_STEER                     0.646 /* 37deg 最大ｽﾃｱﾘﾝｸﾞ切れ角 rad */
+
+#define     _HD785_GPS_ANTENNA_X                  6765 /* GPSアンテナ取付け位置（X座標）*/
+#define     _HD785_GPS_ANTENNA_Y                 -2542 /* GPSアンテナ取付け位置（Y座標）*/
+
+/* Trajectory Dataに含まれるCourseAllowanceの標準値 */
+#define     _HD785_COURSE_ALLOWANCE_NORMAL        1700 /* Traectoryに含まれるCourse Allowanceの基準値(Normal) */
+#define     _HD785_COURSE_ALLOWANCE_NARROW        1400 /* Traectoryに含まれるCourse Allowanceの基準値(Narrow) */
+#define     _HD785_COURSE_ALLOWANCE_WIDE          2200 /* Traectoryに含まれるCourse Allowanceの基準値(Narrow) */
+
+/* GPSアンテナ取付け位置（Z座標）*/
+#define     _HD785_GPS_ANTENNA_Z                  5378
+
+//#define   _HD785_ST_LINK_LENGTH_A             0.8001 /*ステアリングリンクAのZ平面上の長さ[m]*/
+//#define   _HD785_ST_LINK_LENGTH_B             4.1656 /*ステアリングリンクBのZ平面上の長さ[m]*/
+//#define   _HD785_ST_LINK_LENGTH_C             3.6667 /*ステアリングリンクCのZ平面上の長さ[m]*/
+//#define   _HD785_POT_INIT_ANGLE               1.8878 /*直進時のポテンショ角度α[rad]*/
+//#define   _HD785_BETA_INIT_ANGLE              1.2537 /*直進時のβ(Right),β(Left)の角度[rad]*/
+
+// 位置計測ステアリングに関するパラメータ
+#define     _HD785_ST_ARM_OFFSET                1654.6 // 左右アーム取り付け距離
+#define     _HD785_ST_ARM_LENGTH                 508.4 // 左右アーム長さ
+#define     _HD785_REAR_TYRE_OFFSET             1750.0 // 後輪の左右タイヤ位置
+
+// ブレーキバルブに関するパラメータ
+//#define   _HD785_FRONT_BRAKE_MAX                 360 // フロントブレーキバルブの最大電流
+//#define   _HD785_FRONT_BRAKE_MIN                  43 // フロントブレーキバルブの最小電流
+//#define   _HD785_REAR_BRAKE_MAX                  360 // リアブレーキバルブの最大電流
+//#define   _HD785_REAR_BRAKE_MIN                   43 // リアブレーキバルブの最小電流
+
+/**
+ * パルスカウンタ→車速への係数（前輪）
+ * TireF      = 1302mm
+ * Pulse/rev  = 235
+ * gear Ratio = 1
+ * OS 2count/1cycle (up-down)
+ * scale = pi*1302*2/(235*1*2) = 17.40576f
+ */
+#define     _HD785_FRONT_SCALE                17.40576 /* パルスカウンタ→車速への係数（前輪）[mm/count]  */
+
+/**
+ * パルスカウンタ→車速への係数（後輪）
+ * Tire R = 1302mm
+ * Axle after Def reducer Gear Pulse/rev = 98
+ * Final reducer gear Ratio = 6.333
+ * OS 2count/1cycle (up-down)
+ * scale = pi*1302*2/(98*6.333*2) = 6.5906f
+ */
+#define     _HD785_REAR_SCALE                   6.5906 /* パルスカウンタ→車速への係数（後輪）[mm/count]  */
+
+
+#define     _HD785_X_PITCH                      4584.0 // ピッチセンサの取り付け位置 [mm]
+#define     _HD785_Y_PITCH                      2488.5 // ピッチセンサの取り付け位置 [mm]
+
+#define     _HD785_X_ROLL                       4675.5 // ロールセンサの取り付け位置 [mm]
+#define     _HD785_Y_ROLL                       2377.0 // ロールセンサの取り付け位置 [mm]
+
+
+#define     _HD785_CLIPPING_AREA                  3750 // ODS クリッピングエリア基本幅 [mm]
+
+#define     _HD785_REAR_TO_FRONT                  7100 // 後輪中心からフロントバンパーまで  [mm]
+#define     _HD785_VEHICLE_WIDTH                2695.5 // 左右タイヤ端から端までの幅の1/2  [mm]
+#define     _HD785_BODY_WIDTH                     2765 // Body幅の1/2 [mm]
+
+//REG
+#define		_HD785_REG_TARGET_DISTANCE		4846.0f	//REGターゲット距離 [mm] 車体中心が、コース中心と一致するときのREG計測距離（車中心=コース中心と想定した土手根本までが5850mm相当）
+#define     _HD785_X_REG                        6975.0 // REGセンサの取り付け位置 [mm]
+#define     _HD785_Y_REG                        2290.9 // REGセンサの取り付け位置(レンズ面まで) [mm]
+
+// ESR(R)
+#define     _HD785_DIS_FROM_REAR_R_ESR          7516.0 // ODS レーダの取り付け位置に関する定数定義 [mm]
+#define     _HD785_SIDE_RADAR_OFFSET_R_ESR      -299.3 // ODS レーダの取り付け位置に関する定数定義 [mm]
+#define     _HD785_SIDE_RADAR_ANGLE_R_ESR        -17.5 // ODS レーダの取り付け位置に関する定数定義 [deg]
+
+// ESR(C)
+#define     _HD785_DIS_FROM_REAR_C_ESR          7558.5 // ODS レーダの取り付け位置に関する定数定義 [mm]
+#define     _HD785_SIDE_RADAR_OFFSET_C_ESR         0.0 // ODS レーダの取り付け位置に関する定数定義 [mm]
+#define     _HD785_SIDE_RADAR_ANGLE_C_ESR          0.0 // ODS レーダの取り付け位置に関する定数定義 [deg]
+
+// ESR(L)
+#define     _HD785_DIS_FROM_REAR_L_ESR          7491.4 // ODS レーダの取り付け位置に関する定数定義 [mm]
+#define     _HD785_SIDE_RADAR_OFFSET_L_ESR       299.3 // ODS レーダの取り付け位置に関する定数定義 [mm]
+#define     _HD785_SIDE_RADAR_ANGLE_L_ESR         17.5 // ODS レーダの取り付け位置に関する定数定義 [deg]
+
+// LUX(R)
+#define     _HD785_LUX_DIS_FROM_REAR_RIGHT        7434 // LUXレーダの取り付け位置に関する定数定義 [mm]
+#define     _HD785_LUX_SIDE_OFFSET_RIGHT          -561 // LUXレーダの取り付け位置に関する定数定義 [mm]
+#define     _HD785_LUX_ANGLE_RIGHT               -30.0 // [deg]
+
+// LUX(L)
+#define     _HD785_LUX_DIS_FROM_REAR_LEFT         7402 // LUXレーダの取り付け位置に関する定数定義 [mm]
+#define     _HD785_LUX_SIDE_OFFSET_LEFT            538 // LUXレーダの取り付け位置に関する定数定義 [mm]
+#define     _HD785_LUX_ANGLE_LEFT                 40.0 // [deg]
+
+#define     _HD785_LUX_HEIGHT                     1188 // LUXレーダの取り付け高さ [mm]
+
+// SRR(R)	
+#define     _HD785_MACOM_FR_DIS_FROM_REAR         7334 // MACOMレーダ(FrontRight)の取り付け位置に関する定数定義 [mm]
+#define     _HD785_MACOM_FR_SIDE_OFFSET           -718 // MACOMレーダ(FrontRight)の取り付け位置に関する定数定義 [mm]
+#define     _HD785_MACOM_FR_ANGLE_OFFSET         -45.0 // [deg]
+
+// SRR(C)
+#define     _HD785_MACOM_FC_DIS_FROM_REAR         7564 // MACOMレーダ(FrontCenter)の取り付け位置に関する定数定義 [mm]
+#define     _HD785_MACOM_FC_SIDE_OFFSET              0 // MACOMレーダ(FrontCenter)の取り付け位置に関する定数定義 [mm]
+#define     _HD785_MACOM_FC_ANGLE_OFFSET           0.0 // [deg]
+
+// SRR(L)
+#define     _HD785_MACOM_FL_DIS_FROM_REAR         7279 // MACOMレーダ(FrontLeft)の取り付け位置に関する定数定義 [mm]
+#define     _HD785_MACOM_FL_SIDE_OFFSET            692 // MACOMレーダ(FrontLeft)の取り付け位置に関する定数定義 [mm]
+#define     _HD785_MACOM_FL_ANGLE_OFFSET          45.0 // [deg]
+                                               
+// SRR(B)
+#define     _HD785_MACOM_RC_DIS_FROM_REAR         -465 // MACOMレーダ(RearCenter)の取り付け位置に関する定数定義 [mm]
+#define     _HD785_MACOM_RC_SIDE_OFFSET              0 // MACOMレーダ(RearCenter)の取り付け位置に関する定数定義 [mm]
+#define     _HD785_MACOM_RC_ANGLE_OFFSET         180.0 // [deg]
+
+//Ars408(Continental)
+#define		_HD785_ARS408_FC_DIS_FROM_REAR		  7564 // kinematicが不明なため、一先ずMACOMレーダのFrontCenterの値を定義
+#define		_HD785_ARS408_FC_SIDE_OFFSET			 0 // ARS408(Continental)の取付位置に関する定数定義
+#define		_HD785_ARS408_FC_ANGLE_OFFSET		   0.0 // [deg]
+
+// 停車用ブレーキゲイン
+#define     _HD785_BrakeForceNormalGain         (1.0f) // 通常停車のときのブレーキ力ゲイン
+#define     _HD785_BrakeForcePaddockGain        (1.2f) // Body上げ走行のときブレーキ力ゲイン
+#define     _HD785_BrakeForceSlopelGain         (1.5f) // 傾斜成分のブレーキ力ゲイン
+
+// 走行制御ゲイン
+#define     _HD785_gainKH_P                      0.112 /* 高速時 Ｐ	HD985=0.112			*/
+#define     _HD785_gainKH_D                       0.72 /* 高速時 Ｄ	HD985=0.72			*/
+#define     _HD785_gainKH_I                       0.18 /* 高速時 Ｉ	HD985=0.18			*/
+#define     _HD785_gainKL_P                   0.000122 /* 低速時 Ｐ	HD985=0.000122		*/
+#define     _HD785_gainKL_D                     1.3363 /* 低速時 Ｄ	HD985=1.3363		*/
+#define     _HD785_gainKL_I	               0.000000872 /* 低速時 Ｉ	HD985=0.000000872	*/
+#define     _HD785_gainK_ST_BEFORE              0.775f /* 車速で変わるフィードバックゲインの係数 */
+#define     _HD785_gainK_HP_ST                   0.80f /* 車速と積載量で変わるフィードバックゲインの係数の基本値 */
+
+#define     _HD785_gainADJ_GAIN                   6.0f
+
+//SCS ゲイン
+#define     _HD785_ScsGainK1                       4.7
+#define     _HD785_ScsGainK2                       4.0
+#define     _HD785_ScsGainK3                       1.2
+
+
+#endif ///#ifndef __HD785_DIMENSION_H_

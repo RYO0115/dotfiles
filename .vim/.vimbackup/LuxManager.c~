@@ -1,0 +1,1000 @@
+/**
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2009 Komatsu Ltd. All rights reserved.
+ *
+ *    $RCSfile: Mmr1cManager.c,v $
+ *    $Revision: 1.1.1.1 $
+ *    $Author: tojima $
+ *    $Date: 2009/09/15 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Communication module with LUX
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#include "ahscommon.h"
+#include "AppMain.h"
+#include "RpcManager.h"
+#include "AhsTools.h"
+#include "Mmr1cManager.h"
+#include "Mmr1cPower.h"
+#include "AppNvram.h"
+#include "HeadLight.h"
+#include "ModeManager.h"
+#include "TruckConfigTable.h"
+#include "TruckInfo.h"
+#include "ClippingAreaManager.h"
+#include "Mmr1cDiagnosis.h"
+//#include "Mmr1cAngleCalib.h"
+#include "WarningManager.h"
+#include "Mmr1cSyncMsg.h"
+#include "Engine.h"
+#include "ErrorManager.h"
+#include "SfInspection.h"
+#include "AppIfdef.h"
+#include "RpcManager.h"
+
+#define _LMAN_DEBUG_PRINT_
+
+#ifdef _LMAN_DEBUG_PRINT_
+static uint8 man_str[128];
+#endif
+
+typedef struct{
+	bool luxSelfDiag;
+	bool luxLbiComm[LUX_NUM];
+	bool luxTrackMsgComm;
+	bool luxNoCommPowerCycleFlag[LUX_NUM];
+	bool luxPowerCycleFlag;
+} StructPowerCycleReq;
+
+/**
+ * Mmr1cManager型定義
+ */
+typedef struct{
+	StructMmr1c  right;       /**< 右LUXオブジェクト */
+	StructMmr1c  left;        /**< 左LUXオブジェクト*/
+
+	bool   disableDiag;     /**< 1:故障診断しない(test用)   0:する(通常) */
+	bool   valid;           /**< 1:使用する                 0:使用しない */
+
+	bool   debugFlag;       /**< テスト用計測許可フラグ */
+
+	bool   operation;       /**< 1:計測中    0:停止 */
+	bool   operationReq;    /**< */
+
+	uint16 recTimer;        /**< LBIからのRPC受信タイマー */
+//    bool   powerCycleReq;
+	StructPowerCycleReq powerCycleReq;
+	bool   luxReady;        /**< ２つとも準備OKかどうか */
+	bool   luxStart;        /**  ２つともStartしたかどうか*/
+
+} StructMmr1cManager;
+
+
+/**
+ * インスタンス定義
+ */
+static StructMmr1cManager lux;
+
+/**
+ * プライベート関数プロトタイプ宣言
+ */
+static void Mmr1cManager_SetOperationStatus(void);
+static void Mmr1cManager_Diagnosis(StructMmr1c *pMmr1c);
+static void Mmr1cManager_HeadlightControl(const StructMmr1c *pMmr1c);
+static StructMmr1c* Mmr1cManager_GetMmr1cObject(Mmr1cPosition pos);
+static void Mmr1cManger_PowerControl(void);
+static void Mmr1cManager_PowerControl(void);
+static void Mmr1cManager_CheckIfMmr1cIsReady(void);
+static bool FkwComStart(void);
+//---------------------------------------------------------------------------
+/**
+ * 初期化
+ */
+//---------------------------------------------------------------------------
+void Mmr1cManager_Init(void)
+{
+	bool existR,existL;
+
+	// レーダがインストールされているかどうか
+	existR = TRUE;
+    existL = TRUE;
+
+    // 各レーダの初期化
+	Mmr1c_Init(&lux.right,
+             posMmr1cRight,
+			 existR
+			 );
+
+	Mmr1c_Init(&lux.left,
+			 posMmr1cLeft,
+			 existL
+			 );
+
+	lux.disableDiag  = FALSE;
+	lux.recTimer     = 0;
+
+	// LUXが存在しなければLUX機能はなし
+	if( (existR==FALSE) && (existL==FALSE) )
+	{
+		lux.valid = FALSE;
+	}
+	else
+	{
+		lux.valid = TRUE;
+	}
+
+	lux.operation    = FALSE;
+	lux.operationReq = FALSE;
+
+//    lux.debugFlag     = FALSE;
+	lux.debugFlag     = TRUE;
+	lux.powerCycleReq.luxSelfDiag = OFF;
+	lux.powerCycleReq.luxLbiComm[posMmr1cRight] = OFF;
+	lux.powerCycleReq.luxLbiComm[posMmr1cLeft ] = OFF;
+	lux.powerCycleReq.luxTrackMsgComm = OFF;
+	lux.powerCycleReq.luxNoCommPowerCycleFlag[posMmr1cRight] = FALSE;
+	lux.powerCycleReq.luxNoCommPowerCycleFlag[posMmr1cLeft ] = FALSE;
+	lux.powerCycleReq.luxPowerCycleFlag = FALSE;
+	lux.luxReady      = FALSE;
+	lux.luxStart      = FALSE;
+
+	// キャリブレーション
+//    Mmr1cAngleCalib_Init();
+
+	// レーダ電源の初期化
+	Mmr1cPower_Init();
+
+}
+
+//---------------------------------------------------------------------------
+/**
+ * メイン
+ */
+//---------------------------------------------------------------------------
+void Mmr1cManager_PreMain(void)
+{
+	float32  cs,sn;
+	sint16   heading;
+	sint32   x,y;
+	
+	if( lux.valid == TRUE )
+	{
+
+		x       = TruckInfo_GetX();
+		y       = TruckInfo_GetY();
+		heading = TruckInfo_GetHeading();
+		sn      = sinf(Tools_circular2rad(heading));
+		cs      = cosf(Tools_circular2rad(heading));
+
+		Mmr1c_PreMain(&lux.right,x, y, heading, cs, sn);
+		Mmr1c_PreMain(&lux.left ,x, y, heading, cs, sn);
+		
+		
+		
+	}
+	else
+	{
+		// do nothing
+	}
+}
+
+//---------------------------------------------------------------------------
+/**
+ * メイン
+ */
+//---------------------------------------------------------------------------
+void Mmr1cManager_Main(void)
+{
+
+	//sprintf(lux_str,"main")
+	//CanDebugPrintf(lux_str);
+	// 電源コントロール
+	Mmr1cManger_PowerControl();
+
+	// レーダ電源のメインルーチン
+	Mmr1cPower_Main();
+
+	if( lux.valid == TRUE )
+	{
+		//sprintf(lux_str,"main");
+		//CanDebugPrintf(lux_str);
+
+		// LUXの起動チェック
+		Mmr1cManager_CheckIfMmr1cIsReady();
+
+		// LUX取り付けチェック
+		Mmr1cManager_SetOperationStatus();
+
+		// LBIへコマンド送信
+		Mmr1cSyncMsg_SendMsg();
+
+		Mmr1c_Main(&lux.right);
+		Mmr1c_Main(&lux.left);
+
+		// キャリブレーション
+//      Mmr1cAngleCalib_Main();
+
+		// ヘッドライト
+		Mmr1cManager_HeadlightControl(&lux.right);
+		Mmr1cManager_HeadlightControl(&lux.left);
+
+		// 故障診断
+		Mmr1cManager_Diagnosis(&lux.right);
+		Mmr1cManager_Diagnosis(&lux.left);
+
+		// 電源コントロール
+		Mmr1cManager_PowerControl();
+	}
+	else
+	{
+		// do nothing
+	}
+}
+
+void Mmr1cManager_PostMain(void)
+{
+	if( lux.valid == TRUE )
+	{
+		Mmr1c_PostMain(&lux.right);
+		Mmr1c_PostMain(&lux.left);
+
+		Mmr1cPower_PostMain();
+	}
+}
+
+
+//---------------------------------------------------------------------------
+/**
+ * RPC受信用コールバック関数
+ */
+//---------------------------------------------------------------------------
+void Mmr1cManager_ReceiveErrorMsg(const rpc_T *rpc)
+{
+	uint8 ch;
+
+	ch = rpc->args[2];
+
+	if( ch == 0 )
+	{
+		Mmr1cDiagnosis_ReceiveError(&lux.right, (uint8*)&rpc->args[3]);
+	}
+	else if( ch == 1 )
+	{
+		Mmr1cDiagnosis_ReceiveError(&lux.left, (uint8*)&rpc->args[3]);
+	}
+	else
+	{
+		//
+	}
+}
+//---------------------------------------------------------------------------
+/**
+ * RPC受信用コールバック関数
+ * クリップターゲットの受信
+ */
+//---------------------------------------------------------------------------
+void Mmr1cManager_ReceiveClippedTargetMsg(const rpc_T *rpc)
+{
+	// センサは２つあるが、、MasterSlaveなので、右レーダオブジェクトを使う
+	Mmr1c_ReceiveClippedTargetMsg(&lux.right, (uint8*)&rpc->args[0]);
+	//sprintf(man_str, "targetNum:%d", lux.right.targetNum);
+	//CanDebugPrintf(man_str);
+}
+
+
+
+
+
+//---------------------------------------------------------------------------
+/**
+ * @return 
+ */
+//---------------------------------------------------------------------------
+sint16 Mmr1cManager_GetTargetNum(Mmr1cPosition pos)
+{
+    sint16 num;
+    StructMmr1c *pMmr1c;
+
+    pMmr1c = Mmr1cManager_GetMmr1cObject(pos);
+
+    if( pMmr1c != NULL )
+    {
+	num = pMmr1c->targetNum;
+    }
+    else
+    {
+        num = -1;
+    }
+
+    return(num);
+}
+
+uint8 Mmr1cManager_GetLbiClippingAreaNum(Mmr1cPosition pos)
+{
+	uint8 num;
+	StructMmr1c *pMmr1c;
+	pMmr1c = Mmr1cManager_GetMmr1cObject(pos);
+
+	if( pMmr1c != NULL )
+	{
+		num = pMmr1c->clipObject.targetNum;
+	}
+	else
+	{
+	    num = 0;
+	}
+
+	return(num);
+}
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+StructMmr1cTargetInfo* Mmr1cManager_GetTarget(
+    Mmr1cPosition pos,     /**< */
+    sint16 index         /**< */
+    )
+{
+	StructMmr1cTargetInfo *ptr;
+	StructMmr1c *pMmr1c;
+	pMmr1c = Mmr1cManager_GetMmr1cObject(pos);
+
+	if( pMmr1c != NULL )
+	{
+		ptr = Mmr1c_GetTrackData(pMmr1c, index);
+	}
+	else
+	{
+		ptr = NULL;
+	}
+
+	return(ptr);
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+void Mmr1cManager_Enable(void)
+{
+    lux.valid = TRUE;
+}
+void Mmr1cManager_Disable(void)
+{
+    lux.valid = FALSE;
+}
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+void Mmr1cManager_DiagnosisEnable(void)
+{
+    lux.disableDiag = FALSE;  // 故障診断有効
+}
+void Mmr1cManager_DiagnosisDisable(void)
+{
+    lux.disableDiag = TRUE;   // 故障診断無視
+}
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+void Mmr1cManager_StartOperation(void)
+{
+	lux.operationReq = TRUE;
+}
+void Mmr1cManager_StopOperation(void)
+{
+	lux.operationReq = FALSE;
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+bool Mmr1cManager_IsMmr1cOperated(void)
+{
+	return(lux.operation);
+}
+
+
+//---------------------------------------------------------------------------
+/**
+ * クリッピングされたターゲットがあるかどうか
+ */
+//---------------------------------------------------------------------------
+bool Mmr1cManager_GetTargetValidFlag(Mmr1cPosition pos)
+{
+	bool flag;
+	sint32 range;
+	StructMmr1c *pMmr1c;
+
+	pMmr1c = Mmr1cManager_GetMmr1cObject(pos);
+
+	if( pMmr1c != NULL )
+	{
+		range = pMmr1c->closestRange;
+	}
+	else
+	{
+		range = -1;
+	}
+
+	if( ( range >= 200000 ) || ( range <= 0 ) )
+	{
+		flag = FALSE;
+	}
+	else
+	{
+		flag = TRUE;
+	}
+
+	return(flag);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * クリッピングされたターゲットのうち、最短距離
+ * @return [mm]
+ */
+//---------------------------------------------------------------------------
+sint32 Mmr1cManager_GetClosestRange(Mmr1cPosition pos)
+{
+	sint32 range;
+	StructMmr1c *pMmr1c;
+
+	pMmr1c = Mmr1cManager_GetMmr1cObject(pos);
+
+	if( pMmr1c != NULL )
+	{
+		range = pMmr1c->closestRange;
+	}
+	else
+	{
+		range = 200000;
+	}
+
+	return(range);
+}
+
+sint16 Mmr1cManager_GetClosestTargetIndex(Mmr1cPosition pos)
+{
+	sint16 index;
+	StructMmr1c *pMmr1c;
+
+	pMmr1c = Mmr1cManager_GetMmr1cObject(pos);
+
+    if( pMmr1c != NULL )
+    {
+        index = pMmr1c->closestIndex;
+    }
+    else
+    {
+        index = -1;
+    }
+    
+    return(index);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * レーダインストールされているかどうか
+ */
+//---------------------------------------------------------------------------
+bool Mmr1cManager_isRadarAvailable(Mmr1cPosition pos)
+{
+    bool flag;
+    StructMmr1c *pMmr1c;
+
+    pMmr1c = Mmr1cManager_GetMmr1cObject(pos);
+
+    if( pMmr1c != NULL )
+    {
+        flag = pMmr1c->valid;
+    }
+    else
+    {
+        flag = FALSE;
+    }
+
+    return(flag);
+}
+
+
+//---------------------------------------------------------------------------
+/**
+ * 
+ */
+//---------------------------------------------------------------------------
+void Mmr1cManager_SetDebugFlag(bool flag)
+{
+    lux.debugFlag = flag;
+}
+bool Mmr1cManager_GetDebugFlag(void)
+{
+    return(lux.debugFlag);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * LUXが正常かどうか
+ */
+//---------------------------------------------------------------------------
+bool Mmr1cManager_Mmr1cIsHealthy(Mmr1cPosition pos)
+{
+    StructMmr1c *pMmr1c;
+
+    pMmr1c = Mmr1cManager_GetMmr1cObject(pos);
+
+    if( pMmr1c != NULL )
+    {
+        return(pMmr1c->healthy);
+    }
+    else
+    {
+        return(FALSE);
+    }
+}
+bool Mmr1cManager_GetNoCommPowerCycleFlagRight(void)
+{
+	return(lux.powerCycleReq.luxNoCommPowerCycleFlag[posMmr1cRight]);
+}
+bool Mmr1cManager_GetNoCommPowerCycleFlagLeft(void)
+{
+	return(lux.powerCycleReq.luxNoCommPowerCycleFlag[posMmr1cLeft]);
+}
+
+void Mmr1cManager_RecoveryNoCommPowerCycleRight(void)
+{
+	lux.powerCycleReq.luxNoCommPowerCycleFlag[posMmr1cRight] = FALSE;
+}
+void Mmr1cManager_RecoveryNoCommPowerCycleLeft(void)
+{
+	lux.powerCycleReq.luxNoCommPowerCycleFlag[posMmr1cLeft]  = FALSE;
+}
+bool Mmr1cManager_GetMmr1cStartFlag(Mmr1cPosition pos)
+{
+	bool ret = TRUE;
+	if( pos == posMmr1cRight )
+	{
+//		ret = (bool)lux.right.error.warning2.bitf.W_Start;
+	}
+	else
+	{
+//		ret = (bool)lux.left.error.warning2.bitf.W_Start;
+	}
+	return(ret);
+}
+uint16 Mmr1cManager_GetErrMsgRecieveCounter(Mmr1cPosition pos)
+{
+	uint16 ret;
+	
+    if( pos == posMmr1cRight )
+    {
+        ret = lux.right.packetCounter; 
+    }
+    else if( pos == posMmr1cLeft )
+    {
+        ret = lux.left.packetCounter; 
+    }
+    else
+	{
+        ret = 0;
+    }
+	
+	return(ret);
+}
+
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+// プライベート関数
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+/**
+ * LBIに伝えるLUXの計測開始・停止の判断
+ * Auto: 計測
+ * Manual : 基本は停止、ただし
+ *          ・外部からの要求、
+ *          ・クリッピングエリア定義
+ *          の場合は計測開始
+ */
+//---------------------------------------------------------------------------
+static void Mmr1cManager_SetOperationStatus(void)
+{
+	ZoneType zoneType;
+	ModeType mode;
+
+	zoneType = ClippingArea_GetZoneType();
+	mode = Mode_GetCurrentMode();
+
+    if( mode == modeManual )
+    {
+        if( (lux.operationReq == TRUE ) || ( zoneType != zoneNone ) )
+        {
+            lux.operation = TRUE;
+        }
+        else
+        {
+            lux.operation = FALSE;
+        }
+        
+    }
+    else
+    {
+        lux.operation    = TRUE;
+        lux.operationReq = FALSE;
+    }
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+static void Mmr1cManager_Diagnosis(StructMmr1c *pMmr1c)
+{
+
+#ifdef LUX_MANAGER_DEBUG
+    char debugstr[128];
+#endif
+
+    bool ret1;
+    bool lbiRet1;
+    bool checkMmr1cCom;
+	bool luxPowerOutput;
+
+	sint16 position,engineStatus;
+    
+    pMmr1c->healthy = TRUE;
+    position = (sint16)(pMmr1c->pos);
+    checkMmr1cCom = FALSE;
+	
+	luxPowerOutput = Mmr1cPower_GetOutput();
+	engineStatus   = Engine_GetStatus();	
+
+ 
+    
+    // E/Gがかかっているときだけチェック//Mmr1cの電源を入れたときもチェックする
+    if( (( engineStatus == ON )||( luxPowerOutput == ON )) && ( lux.disableDiag == FALSE ) )
+    {
+        // LBIの起動チェック
+        if( Mmr1cDiagnosis_CheckLbiReady(pMmr1c) == TRUE )  // 0xE53
+        {
+            // Safety - LBIの通信チェック
+            if( Mmr1cDiagnosis_CheckSafetyLbiCommunication(pMmr1c) == TRUE )  // 0xE52
+            {
+
+                //PowerCycle用にLBI-LUXの通信チェックは常に行う
+                checkMmr1cCom = Mmr1cDiagnosis_CheckLbiMmr1cCommunication(pMmr1c);
+
+                if( lux.luxReady == TRUE )
+                {
+			/*
+                    // LBI自己診断
+                    lbiRet1 = Mmr1cDiagnosis_CheckLbiNposition(pMmr1c);       // 0xE59
+                    
+                    if( lbiRet1== FALSE )
+                    {
+                        pMmr1c->healthy = FALSE;
+                    }
+                    else
+                    {
+                      // 
+                    }
+              */
+                    // LUXのモードチェック
+                    if( Mmr1cDiagnosis_CheckMmr1cOperationMode(pMmr1c) == TRUE )  // 0xE5C
+                    {
+                        // LBI - LUXの通信チェック
+                        if( checkMmr1cCom == TRUE )  // 0xE51
+                        {
+							if( (pMmr1c->pos==posMmr1cRight)||(pMmr1c->pos==posMmr1cLeft) )
+							{
+								lux.powerCycleReq.luxLbiComm[position] = OFF;
+							}
+
+                            // LUX本体の故障診断
+                            ret1 = Mmr1cDiagnosis_SelfDiagnosisError1(pMmr1c);
+
+							//Mmr1cDiagnosis_SelfDiagnosisBlindness(pMmr1c);
+                            
+                            // 本体の故障の場合電源をリセット
+                            if( ret1 == FALSE )
+                            {
+                               lux.powerCycleReq.luxSelfDiag = ON;
+                               pMmr1c->healthy = FALSE;
+                            }
+                            else
+                            {
+								lux.powerCycleReq.luxSelfDiag = OFF;
+							}
+                        }
+                        else
+                        {
+							if( (pMmr1c->pos==posMmr1cRight)||(pMmr1c->pos==posMmr1cLeft) )
+							{
+								lux.powerCycleReq.luxLbiComm[position] = ON;
+							}
+                            pMmr1c->healthy = FALSE;
+                        }
+
+                        // LUXからのターゲット情報通信チェック
+                        if( Mmr1cDiagnosis_CheckTrackMsgCommunication(pMmr1c) == TRUE )    // 0xE52
+                        {
+                            // 正常
+                            lux.powerCycleReq.luxTrackMsgComm = OFF;
+                        }
+                        else
+                        {
+//							lux.powerCycleReq.luxTrackMsgComm = ON;
+                            pMmr1c->healthy = FALSE;
+                        }
+
+                    }
+                    else
+                    {
+                        pMmr1c->healthy = FALSE;
+                    }
+                }
+                else
+                {
+                    pMmr1c->healthy = FALSE;
+                }
+            }
+            else
+            {
+                pMmr1c->healthy = FALSE;
+            }
+        }
+        else
+        {
+            pMmr1c->healthy = FALSE;
+        }
+
+    }
+    else
+    {
+        pMmr1c->healthy = FALSE;
+    }
+
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 障害物検知時のヘッドライトの点灯
+ */
+//---------------------------------------------------------------------------
+static void Mmr1cManager_HeadlightControl(const StructMmr1c *pMmr1c)
+{
+    if( pMmr1c->targetNum != 0)
+    {
+        //とにかく何かを検知したらヘッドライトをつける
+		//U48ではヘッドライトとハイビーム両方点灯させる
+        Headlight_Flash();
+		Headlight_BeamFlash();
+    }
+    else
+    {
+        //
+    }
+}
+
+//---------------------------------------------------------------------------
+/**
+ * @return
+ */
+//---------------------------------------------------------------------------
+static StructMmr1c* Mmr1cManager_GetMmr1cObject(Mmr1cPosition pos)
+{
+    StructMmr1c *pMmr1c;
+    
+    if( pos == posMmr1cRight )
+    {
+        pMmr1c = &lux.right;
+    }
+    else if( pos == posMmr1cLeft )
+    {
+        pMmr1c = &lux.left;
+    }
+    else
+    {
+        pMmr1c = NULL;
+    }
+    
+    return(pMmr1c);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * @return
+ */
+//---------------------------------------------------------------------------
+static void Mmr1cManger_PowerControl(void)
+{
+    static sint16 egStatPrev = OFF;
+    sint16 egStat;
+
+    // Engineの状態
+    egStat = Engine_GetStatus();
+
+    if( egStat == OFF )
+    {
+        // Engine停止したらレーダ電源OFF
+        if( egStatPrev == ON )
+        {
+            Mmr1cPower_Off();
+        }
+        else
+        {
+            //
+        }
+    }
+    else
+    {
+        // EngineONまたはFAILでレーダ電源をON
+        if( egStatPrev == OFF )
+        {
+            Mmr1cPower_On();
+        }
+        else
+        {
+            //
+        }
+    }
+
+    egStatPrev = egStat;
+}
+
+
+
+//---------------------------------------------------------------------------
+/**
+ * @return
+ */
+//---------------------------------------------------------------------------
+static void Mmr1cManager_PowerControl(void)
+{
+    ModeType mode, modePrev;
+    
+    if( (lux.powerCycleReq.luxSelfDiag             == ON )
+     || (lux.powerCycleReq.luxTrackMsgComm         == ON )
+     || (lux.powerCycleReq.luxLbiComm[posMmr1cRight] == ON )
+     || (lux.powerCycleReq.luxLbiComm[posMmr1cLeft]  == ON ) )
+    {
+        mode     = Mode_GetCurrentMode();
+        modePrev = Mode_GetPreviousMode();
+        
+        // エラーモードになったら電源をリセット
+//        if( ( mode == modeError ) && ( modePrev == modeAuto ) )
+        if( mode == modeError )
+        {
+            Mmr1cPower_Cycle();
+
+            if( lux.powerCycleReq.luxLbiComm[posMmr1cRight]==ON )
+            {
+				lux.powerCycleReq.luxNoCommPowerCycleFlag[posMmr1cRight] = TRUE;
+			}
+			if( lux.powerCycleReq.luxLbiComm[posMmr1cLeft] ==ON )
+            {
+				lux.powerCycleReq.luxNoCommPowerCycleFlag[posMmr1cLeft] = TRUE;
+			}
+			
+            lux.powerCycleReq.luxLbiComm[posMmr1cRight] = OFF;
+            lux.powerCycleReq.luxLbiComm[posMmr1cLeft ] = OFF;
+			
+            lux.powerCycleReq.luxSelfDiag     = OFF;
+            lux.powerCycleReq.luxTrackMsgComm = OFF;
+            lux.luxReady      = FALSE;
+        }
+        else if( ( mode == modeStop ) || ( mode == modeManual ) )
+        {
+            // 電源リセットしない
+            lux.powerCycleReq.luxLbiComm[posMmr1cRight] = OFF;
+            lux.powerCycleReq.luxLbiComm[posMmr1cLeft ] = OFF;
+            lux.powerCycleReq.luxNoCommPowerCycleFlag[posMmr1cRight] = FALSE;
+            lux.powerCycleReq.luxNoCommPowerCycleFlag[posMmr1cLeft]  = FALSE;
+            lux.powerCycleReq.luxSelfDiag     = OFF;
+            lux.powerCycleReq.luxTrackMsgComm = OFF;
+            lux.powerCycleReq.luxPowerCycleFlag = FALSE;
+        }
+        else
+        {
+			//do nothing;
+		}
+    }
+}
+
+//---------------------------------------------------------------------------
+/**
+ * LUX起動チェック
+ */
+//---------------------------------------------------------------------------
+static void Mmr1cManager_CheckIfMmr1cIsReady(void)
+{
+    static sint16 timer = 0;
+	bool   luxPowerOutput;
+
+static sint16 ccc = 0;
+
+	luxPowerOutput = Mmr1cPower_GetOutput();
+
+
+    if( luxPowerOutput == ON ) 
+    {
+
+	    //CanDebugPrintf("a");
+
+		if( lux.luxReady == FALSE )
+		{
+			Error_Set(E_LUXODS_NOT_READY);  // 0x4EB3
+
+		   	//CanDebugPrintf("b");
+
+			if( FkwComStart() == TRUE ) 
+			{
+				lux.luxReady = TRUE;
+				Warning_Clear(E_LUXODS_NOT_READY);
+			}
+			else
+			{
+				timer++;
+				if( timer >= T_45SEC ) {timer = T_45SEC;}
+			}
+
+			if( ccc % 20 == 0 )	CanDebugPrintf("not ready");
+
+        }
+        else  // lux ready
+        {
+            timer = 0;
+
+			//if( ccc % 20 == 0 )	CanDebugPrintf("ready");
+        }
+    }
+    else
+    {
+        lux.luxReady = FALSE;
+        timer = 0;
+    }
+
+	ccc++;
+
+}
+
+
+bool Mmr1cManager_GetMmr1cReady(void)
+{
+	return(lux.luxReady);
+}
+
+bool FkwComStart(void)
+{
+	bool ret;
+	
+	if( ((lux.right.error.status & 0x01) == 0x01) 
+	  && ((lux.left.error.status & 0x01) == 0x01) )
+	{
+		ret = TRUE;
+	}
+	else
+	{
+		ret = FALSE;
+	}
+
+	return(ret);
+}
+

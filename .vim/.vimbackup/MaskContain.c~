@@ -1,0 +1,281 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2005 Komatsu Ltd. All rights reserved.
+ * 
+ *  $RCSfile: MaskContain.c,v $
+ * $Revision: 1.1.1.1 $
+ *   $Author: tojima $
+ *     $Date: 2005/07/06 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Safety Controller
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#include "MaskContain.h"
+#include "MaskData.h"
+
+/**
+ * 関数プロトタイプ
+ */
+static MaskType MaskContain_GetMaskTypeByMaskLevel(sint32 x, sint32 y, MaskCategory category);
+static MaskType MaskContain_GetMaskType(sint32 x, sint32 y, MaskCategory category);
+
+//---------------------------------------------------------------------------
+/**
+ * 指定した座標が指定したマスクに入っているかどうか(Radar Mask)
+ * @return マスクタイプ
+ * @param x  
+ * @param y  
+ */
+//---------------------------------------------------------------------------
+MaskType MaskContain_RadarMask(sint32 x, sint32 y)
+{
+    MaskType mType;
+
+    // 重なった場合は、レベルの高いもの（閾値の高いもの)優先
+    mType = MaskContain_GetMaskTypeByMaskLevel(x,y,maskCategoryRadar);
+
+    return(mType);
+
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 指定した座標が指定したマスクに入っているかどうか(Truck Radar Mask)
+ * @return マスクタイプ
+ * @param x  
+ * @param y  
+ */
+//---------------------------------------------------------------------------
+MaskType MaskContain_RadarTruckMask(sint32 x, sint32 y)
+{
+    MaskType mType;
+
+    // 重なった場合は、レベルの高いもの（閾値の高いもの)優先
+    mType = MaskContain_GetMaskTypeByMaskLevel(x,y,maskCategoryTruckRadar);
+
+    return(mType);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 指定した座標が指定したマスクに入っているかどうか(REG Mask)
+ * @return マスクタイプ
+ * @param x  
+ * @param y  
+ */
+//---------------------------------------------------------------------------
+MaskType MaskContain_RegMask(sint32 x, sint32 y)
+{
+    MaskType mType;
+
+    // 重なった場合は、先に見つかったもの優先
+    mType = MaskContain_GetMaskType(x,y,maskCategoryREG);
+
+    return(mType);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 指定した座標が指定したマスクに入っているかどうか(Utility Mask)
+ * @return マスクタイプ
+ * @param x  
+ * @param y  
+ */
+//---------------------------------------------------------------------------
+MaskType MaskContain_UtilityMask(sint32 x, sint32 y)
+{
+    MaskType mType;
+
+    // 重なった場合は、先に見つかったもの優先
+    mType = MaskContain_GetMaskType(x,y,maskCategoryUtility);
+
+    return(mType);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 指定した座標が指定したマスクに入っているかどうか(MMR1C Mask)
+ * @return マスクタイプ
+ * @param x  
+ * @param y  
+ */
+//---------------------------------------------------------------------------
+MaskType MaskContain_LuxMask(sint32 x, sint32 y)
+{
+    MaskType mType;
+
+    // 重なった場合は、レベルの高いもの（閾値の高いもの)優先
+    mType = MaskContain_GetMaskTypeByMaskLevel(x,y,maskCategoryLux);
+
+    return(mType);
+}
+//---------------------------------------------------------------------------
+/**
+ * 指定した座標が指定したマスクに入っているかどうか(SRR Front Mask)
+ * @return マスクタイプ
+ * @param x  
+ * @param y  
+ */
+//---------------------------------------------------------------------------
+MaskType MaskContain_SrrFrontMask(sint32 x, sint32 y)
+{
+    MaskType mType;
+
+    // 重なった場合は、レベルの高いもの（閾値の高いもの)優先
+    mType = MaskContain_GetMaskTypeByMaskLevel(x,y,maskCategorySrrFront);
+
+    return(mType);
+}
+//---------------------------------------------------------------------------
+/**
+ * 指定した座標が指定したマスクに入っているかどうか(SRR Rear Mask)
+ * @return マスクタイプ
+ * @param x  
+ * @param y  
+ */
+//---------------------------------------------------------------------------
+MaskType MaskContain_SrrRearMask(sint32 x, sint32 y)
+{
+    MaskType mType;
+
+    // 重なった場合は、レベルの高いもの（閾値の高いもの)優先
+    mType = MaskContain_GetMaskTypeByMaskLevel(x,y,maskCategorySrrRear);
+
+    return(mType);
+}
+
+
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+// プライベート関数
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+/**
+ * 指定した座標が指定したマスクに入っているかどうか(マスクレベル優先)
+ * @return マスクタイプ
+ * @param x  
+ * @param y  
+ */
+//---------------------------------------------------------------------------
+static MaskType MaskContain_GetMaskTypeByMaskLevel(sint32 x, sint32 y, MaskCategory category)
+{
+    sint16 i;
+    MaskType maskTypeLowPrior = maskRegular;
+    MaskType maskTypeHiPrior  = maskRegular;
+    MaskType mType, ret;
+
+    // 指定された座標を含むマスクでもっともレベルが高いものを探す
+    for( i=0; i<MAX_NUM_MASK_AREA; i++ )
+    {
+        mType = Mask_GetMaskType(category,i);
+        
+        // PRIORITYがHIのもの
+        if( Mask_GetMaskPriority(i) == MASK_PRIOR_HIGH )
+        {
+            if( maskTypeHiPrior < mType )
+            {
+                if( MaskData_IsInside( (StructMaskData*)Mask_GetMaskArea(i), x, y ) == TRUE )
+                {
+                    maskTypeHiPrior = mType;
+                }
+            }
+        }
+        // PRIORITYがLOWのもの
+        else
+        {
+            if( maskTypeLowPrior < mType )
+            {
+                if( MaskData_IsInside( (StructMaskData*)Mask_GetMaskArea(i), x, y ) == TRUE )
+                {
+                    maskTypeLowPrior = mType;
+                }
+            }
+        }
+    }
+    
+    // HI Priorityがセットされていれば、HiPriorityのマスクを優先
+    if( maskTypeHiPrior != maskRegular )
+    {
+        ret = maskTypeHiPrior;
+    }
+    else
+    {
+        ret = maskTypeLowPrior;
+    }
+
+    return(ret);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 指定した座標が指定したマスクに入っているかどうか(重なり考慮しない、先に見つかったもの優先)
+ * @return マスクタイプ
+ * @param x  
+ * @param y  
+ */
+//---------------------------------------------------------------------------
+static MaskType MaskContain_GetMaskType(sint32 x, sint32 y, MaskCategory category)
+{
+    sint16 i;
+    MaskType maskTypeLowPrior = maskRegular;
+    MaskType maskTypeHiPrior  = maskRegular;
+    MaskType mType, ret;
+
+    // UTILITYに関しては、最初に見つかったマスクを採用する（重なりを考慮しない）
+    // PRIORITYがHIのもの
+    for( i=0; i<MAX_NUM_MASK_AREA; i++ )
+    {
+        mType = Mask_GetMaskType(category,i);
+
+        if( Mask_GetMaskPriority(i) == MASK_PRIOR_HIGH )
+        {
+            if( mType != maskRegular)
+            {
+                if( MaskData_IsInside( (StructMaskData*)Mask_GetMaskArea(i), x, y ) == TRUE )
+                {
+                    maskTypeHiPrior = mType;
+                    break;
+                }
+            }
+        }
+    }
+
+    // PriorityがLOW
+    for( i=0; i<MAX_NUM_MASK_AREA; i++ )
+    {
+        mType = Mask_GetMaskType(maskCategoryUtility,i);
+
+        if( Mask_GetMaskPriority(i) == MASK_PRIOR_LOW )
+        {
+            if( mType != maskRegular)
+            {
+                if( MaskData_IsInside( (StructMaskData*)Mask_GetMaskArea(i), x, y ) == TRUE )
+                {
+                    maskTypeLowPrior = mType;
+                    break;
+                }
+            }
+        }
+    }
+    
+    // HI Priorityがセットされていれば、HiPriorityのマスクを優先
+    if( maskTypeHiPrior != maskRegular )
+    {
+        ret = maskTypeHiPrior;
+    }
+    else
+    {
+        ret = maskTypeLowPrior;
+    }
+
+    return(ret);
+}
+

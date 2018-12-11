@@ -1,0 +1,126 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2009 Komatsu Ltd. All rights reserved.
+ * 
+ *    $RCSfile: MacomCommon.h,v $
+ *    $Revision: 1.1.1.1 $
+ *    $Author: tojima $
+ *    $Date: 2009/09/15 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Communication module with LUX
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+#ifndef __MACOM_COMMON_H__
+#define __MACOM_COMMON_H__
+
+#define MACOM_NUM           4
+#define MAX_MACOM_OBJECTS  10
+
+/**
+ * レーダのモード定義
+ */
+#define RESET_MODE         0x00   /**< センサの初期化モード */
+#define IDLE_MODE          0x01   /**< */
+#define FRONT_BUMPER_MODE  0x02   /**< 通常の計測モード 18cm - 3000cm */
+#define REAR_BUMPER_MODE   0x04   /**< 通常の計測モード 18cm - 1500cm */
+#define BLANK_MODE         0x06   /**< 何もしない */
+#define CALIBRATION_MODE   0x0E
+#define TRANSITION_MODE    0x0F
+
+/**
+ * エラーコード
+ */
+#define MACOM_ERR_TEMPERATURE_HIGH           0x01
+#define MACOM_ERR_VOLTAGE_LOW                0x02
+#define MACOM_ERR_VOLTAGE_HIGH               0x03
+#define MACOM_ERR_SENSITIVITY_LOW_EXTERNAL   0x04
+#define MACOM_ERR_ADDRESS_UNSTABLE           0x05
+#define MACOM_ERR_SENSITIVITY_LOW_INTERNAL   0x06
+#define MACOM_ERR_HARDWARE_FAILURE_INIT      0x07
+#define MACOM_ERR_CALIBRATION_FAILURE        0x08
+#define MACOM_ERR_HARDWARE_FAILURE_ONLINE    0x09
+#define MACOM_ERR_HIGH_ERROR_FRAMES          0x0A
+#define MACOM_ERR_CONTENT_INVALID            0x0B
+#define MACOM_ERR_SYNC_TIMENG_INVALID        0x0C
+#define MACOM_ERR_BLOCKAGE                   0x0D
+#define MACOM_ERR_SENSITIVITY_LOW_EXT_NOVEL  0x0E
+#define MACOM_ERR_ASIL_FAILURE               0x10
+
+#define MACOM_ERR_SOFTFAULT                      0x3C
+#define MACOM_ERR_SOFTFAULT_EEPROM_WRITE         0x3D
+#define MACOM_ERR_SOFTFAULT_DROPPED_CAN          0x3F
+#define MACOM_ERR_SOFTFAULT_DROPPED_FALST        0x40
+#define MACOM_ERR_SOFTFAULT_STACK_MAIN           0x5E
+#define MACOM_ERR_SOFTFAULT_STACK_IRQ            0x5F
+#define MACOM_ERR_SOFTFAULT_STACK_FIQ            0x60
+#define MACOM_ERR_SOFTFAULT_EEPROM_MIRROR        0x61
+#define MACOM_ERR_SOFTFAULT_SPI_READ             0x62
+#define MACOM_ERR_SOFTFAULT_SPI_DIRTY            0x63
+#define MACOM_ERR_SOFTFAULT_UNMATCHED_EEPROM     0x64
+#define MACOM_ERR_SOFTFAULT_EEPROM_MIRROR_INIT   0x65
+#define MACOM_ERR_SOFTFAULT_COM_MSG_TIMEOUT      0x66
+#define MACOM_ERR_SOFTFAULT_LNA_HIGH_I           0x67
+#define MACOM_ERR_SOFTFAULT_LNA_LOW_I            0x68
+#define MACOM_ERR_SOFTFAULT_LNA_HIGH_Q           0x69
+#define MACOM_ERR_SOFTFAULT_LNA_LOW_Q            0x6A
+#define MACOM_ERR_SOFTFAULT_FFT_INVALID          0x6B
+#define MACOM_ERR_SOFTFAULT_CAN_LOW              0x6C
+#define MACOM_ERR_SOFTFAULT_CAN_HIGH             0x6D
+#define MACOM_ERR_SOFTFAULT_STACK_SYS            0x6E
+#define MACOM_ERR_SOFTFAULT_SPI_TIMEOUT          0x6F
+#define MACOM_ERR_SOFTFAULT_WATCHDOG             0x70
+#define MACOM_ERR_SOFTFAULT_ICHAN_OUT            0x71
+#define MACOM_ERR_SOFTFAULT_QCHAN_OUT            0x72
+#define MACOM_ERR_SOFTFAULT_RANGE_CANCEL         0x73
+#define MACOM_ERR_SOFTFAULT_PARAM1               0x74
+#define MACOM_ERR_SOFTFAULT_PARAM2               0x75
+#define MACOM_ERR_SOFTFAULT_PARAM_UPDATE         0x76
+#define MACOM_ERR_SOFTFAULT_DELTA                0xC8
+#define MACOM_ERR_SOFTFAULT_EC6_LOWTEMP          0xC9
+#define MACOM_ERR_SOFTFAULT_EC6_MIDTEMP          0xCA
+#define MACOM_ERR_SOFTFAULT_EC6_HIGHTEMP         0xCB
+#define MACOM_ERR_SOFTFAULT_ERR_BLOCK            0xD5
+#define MACOM_ERR_SOFTFAULT_ERR_TX               0xD6
+
+#define NUM_MACOM_ERROR_CODE    16
+
+
+#define _DEG38  6917
+#define _DEG30  5461
+#define _DEG25  4551
+#define _DEG20  3640
+#define _DEG10  1820
+#define _DEG18  3276
+
+/** 
+ * レーダのポジション定義
+ */
+typedef enum{
+    posSrrRight  = 0,
+    posSrrCenter = 1,
+    posSrrLeft   = 2,
+    posSrrRear   = 3,
+    posSrrNone   = 4
+} MacomPosition;
+
+/**
+ * 
+ */
+typedef struct{
+    sint32  range;  /**< [mm] */
+    sint32  speed;  /**< [mm/s] */
+    sint32  xpos;   /**< ターゲットのグローバル座標 [mm] */
+    sint32  ypos;   /**< ターゲットのグローバル座標 [mm] */
+    sint32  localX; /**< ターゲットの座標（後輪座標） [mm] */
+    sint32  localY; /**< ターゲットの座標（後輪座標） [mm] */
+    sint16  power;  /**< [dB] */
+    sint16  angle;  /**< [1/65536] */
+} StructUserMacomTarget;
+
+
+#endif  //__MACOM_COMMON_H__
+

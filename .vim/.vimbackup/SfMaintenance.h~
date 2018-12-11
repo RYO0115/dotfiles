@@ -1,0 +1,121 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2006 Komatsu Ltd. All rights reserved.
+ * 
+ *  $RCSfile: SfMaintenance.h,v $
+ * $Revision: 1.1.1.1 $
+ *   $Author: tojima $
+ *     $Date: 2005/07/06 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Safety Controller
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#ifndef _SF_MAINTENNACE_H_
+#define _SF_MAINTENNACE_H_
+
+#include "kcommon.h"
+#include "rpc_api.h"
+
+/** メンテナンスアイテム
+ */
+typedef enum{
+    mntItemNone   = 0,
+    mntItemNvram  = 1,
+    mntItemMotor  = 50,
+    mntItemRange  = 51,
+    mntItemCalibR = 52,
+    mntItemCalibC = 53,
+    mntItemCalibL = 54,
+    mntItemSensR  = 55,
+    mntItemSensC  = 56,
+    mntItemSensL  = 57,
+    mntItemSensS  = 58,
+
+    mntItemCalibLuxR = 60,
+    mntItemCalibLuxL = 61,
+
+    mntItemCalibSrrR = 62,
+    mntItemCalibSrrC = 63,
+    mntItemCalibSrrL = 64,
+    mntItemCalibSrrB = 65,
+    
+    mntItemRangeR = 66,
+    mntItemRangeC = 67,
+    mntItemRangeL = 68,
+
+    mntItemClearSens  = 70,
+    mntItemClearCalib = 71,
+    mntItemClearRange = 72,
+    mntItemClearMotor = 73,
+    
+    mntItemClearLuxCalib = 74,
+    mntItemClearSrrCalib = 75
+    
+} MntItem;
+
+typedef enum{
+    mntCmdStart  = 1,
+    mntCmdCancel = 2,
+    mntCmdGet    = 3,
+    mntCmdSave   = 4,
+    mntCmdEnter  = 5,
+    mntCmdExit   = 6
+} MntCommand;
+
+
+/*  RPC NAME:   MNT_RESULT */
+typedef struct{
+    sint8    item;
+    sint8    result;
+} StructMntResult;
+
+/*  RPC NAME:   MNT_PROGRESS */
+typedef struct{
+    sint8    item;
+    sint8    dummy;
+    sint16   progress;
+    sint16   value;
+} StructMntProgress;
+
+/**
+ */
+extern void Maintenance_Init(void);
+
+/**
+ */
+extern void Maintenance_Main(void);
+
+/**
+ */
+extern void Maintenance_ReceiveCommand(const rpc_T* rpc, uint8 canBus);
+
+/**
+ */
+extern void Maintenance_SendMntResult( MntItem item, sint8 result );
+
+/**
+ */
+extern void Maintenance_ChangeItem(MntItem item);
+
+/**
+ */
+extern uint8 Maintenance_GetSource(void);
+
+/**
+ */
+extern uint8 Maintenance_GetCANPort(uint8 dest);
+
+/**
+ */
+extern void Maintenance_ReceiveCommand_CanA(const rpc_T* rpc);
+
+/**
+ */
+extern void Maintenance_ReceiveCommand_CanB(const rpc_T* rpc);
+
+#endif ///#ifndef _SF_MAINTENNACE_H_

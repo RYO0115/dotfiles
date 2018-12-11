@@ -1,0 +1,339 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2006 Komatsu Ltd. All rights reserved.
+ * 
+ *  $RCSfile: SafetyZone.c,v $
+ * $Revision: 1.1.1.1 $
+ *   $Author: tojima $
+ *     $Date: 2005/07/06 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Safety Controller
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#include "ahscommon.h"
+#include "SafetyZone.h"
+#include "ModeManager.h"
+#include "Course.h"
+#include "AhsLocation.h"
+#include "AhsTools.h"
+#include "IbeoCommon.h"
+#include "MaskData.h"
+#include "RpcManager.h"
+#include "ClippingAreaManager.h"
+#include "AppNvram.h"
+#include "AppIfdef.h"
+
+
+
+/**
+ * クラス定義
+ */
+typedef struct{
+    bool    valid;
+
+    uint32  index;    // 停止点のインデックス
+    
+    StructMaskData  zone;
+    
+    uint16  length;   // 0-65536mm
+    uint16  width;    // 0-65536mm
+
+} StructSafetyZone;
+
+/**
+ * オブジェクト定義
+ */
+static StructSafetyZone  safezone;
+
+
+/** 
+ * プライベート関数
+ */
+static void SafetyZone_UpdateZone(void);
+static void SafetyZone_CalcZone(void);
+static void SafetyZone_SendDebugMsg(void);
+
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+void SafetyZone_Init(void)
+{
+    safezone.valid = FALSE;
+    safezone.index = -1;
+
+    safezone.length = AppNvram_GetRearFreeZoneLengh();      // 3m
+    safezone.width  = AppNvram_GetRearFreeZoneWidth();       // 6 x 2 = 12m
+}
+
+void SafetyZone_PreMain(void)
+{
+    
+}
+
+void SafetyZone_Main(void)
+{
+    SafetyZone_UpdateZone();
+}
+
+
+//---------------------------------------------------------------------------
+/**
+ * 検知位置は精度が必要な停止点の付近かどうか
+ */
+//---------------------------------------------------------------------------
+bool SafetyZone_IsInside(sint32 xpos, sint32 ypos)
+{
+    bool ret;
+
+    #ifdef _DEBUG_SAFE_ZONE
+    char str[128];
+    sint32 x,y;
+    sint16 dx[3],dy[3],i;
+    #endif
+    
+    if( safezone.valid == TRUE )
+    {
+        ret = MaskData_IsInside(&safezone.zone, xpos, ypos);
+
+    #ifdef _DEBUG_SAFE_ZONE
+        sprintf(str,"mask:%d (%d, %d)", ret, xpos, ypos);
+        CanDebugPrintf(str);
+
+        x = safezone.zone.x[0];
+        y = safezone.zone.y[0];
+        for(i=1;i<4;i++){
+            dx[i-1] = (sint16)(safezone.zone.x[i] - safezone.zone.x[0]);
+            dy[i-1] = (sint16)(safezone.zone.y[i] - safezone.zone.y[0]);
+        }
+
+        sprintf(str,"x:%d %d %d %d", x, dx[0], dx[1], dx[2]);
+        CanDebugPrintf(str);
+        sprintf(str,"y:%d %d %d %d", y, dy[0], dy[1], dy[2]);
+        CanDebugPrintf(str);
+    #endif
+
+    }
+    else
+    {
+        // 精度不要
+        ret = FALSE;
+    }
+    
+    
+    return(ret);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * SafetyZoneの領域サイズ変更
+ */
+//---------------------------------------------------------------------------
+void SafetyZone_ChangeAreaWidth(uint16 width)
+{
+	if( ( 3000 < width ) && ( width < 10000 ) )
+	{
+		safezone.width = width;
+	}
+	else
+	{
+		//
+	}
+}
+
+void SafetyZone_ChangeAreaLength(uint16 length)
+{
+	if( ( 500 < length ) && ( length < 10000 ) )
+	{
+		safezone.length = length;
+	}
+	else
+	{
+		//
+	}
+}
+
+
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+// プライベート関数
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+/**
+ * レーダ無視エリアの計算
+ */
+//---------------------------------------------------------------------------
+static void SafetyZone_UpdateZone(void)
+{
+    ModeType mode,prevMode;
+    bool   accurateNeed;
+    uint32 index;
+
+    mode     = Mode_GetCurrentMode();
+    prevMode = Mode_GetPreviousMode();
+
+    if( mode == modeAuto )
+    {
+        // 停止点のインデックス
+        index = ClippineArea_GetEndIndex();
+
+        if( Course_isValid(index) == TRUE ) 
+        {
+            // 停止点が更新されていれば、再計算
+            if( safezone.index != index )
+            {
+                safezone.index = index;
+
+                // 停止点は精度が必要かどうか
+                accurateNeed = AhsLocation_IsStopAccuracyRequired(safezone.index);
+
+                if( accurateNeed == TRUE )
+                {
+                    SafetyZone_CalcZone();
+                    safezone.valid = TRUE;
+                }
+                else
+                {
+                    // 通常の停止点
+                    safezone.valid = FALSE;
+                }
+
+                // debug
+                SafetyZone_SendDebugMsg();
+            }
+            else
+            {
+                // 停止点変わっていない
+                // safezone.validはそのまま
+            }
+        }
+        else
+        {
+            // コースがない
+            safezone.valid = FALSE;
+        }
+    }
+    else
+    {
+        if( prevMode == modeAuto )
+        {
+            SafetyZone_SendDebugMsg();
+        }
+        else
+        {
+            // do nothing
+        }
+
+        // 自動モードではない
+        safezone.valid = FALSE;
+    }
+}
+
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+static void SafetyZone_CalcZone(void)
+{
+    StructPointF  P1, P2;
+    float32  cs, sn, L, W;
+    sint16 i;
+    sint32 xpos;     // 停止点の座標 [mm]
+    sint32 ypos;     // 
+    sint16 heading;  // [1/65536]
+
+    xpos    = Course_GetX(safezone.index);
+    ypos    = Course_GetY(safezone.index);
+    heading = Course_GetHeading(safezone.index);
+
+    L = (float32)safezone.length;
+    W = (float32)safezone.width;
+
+    cs = Tools_GetCos(heading);
+    sn = Tools_GetSin(heading);
+
+    P1.xpos = (float32)xpos;
+    P1.ypos = (float32)ypos;
+    
+    P2.xpos = P1.xpos + L * cs;
+    P2.ypos = P1.ypos + L * sn;
+
+    safezone.zone.x[0] = (sint32)(( sn * W) + P1.xpos);
+    safezone.zone.y[0] = (sint32)((-cs * W) + P1.ypos);
+    
+    safezone.zone.x[1] = (sint32)(( sn * W) + P2.xpos);
+    safezone.zone.y[1] = (sint32)((-cs * W) + P2.ypos);
+    
+    safezone.zone.x[2] = (sint32)((-sn * W) + P2.xpos);
+    safezone.zone.y[2] = (sint32)(( cs * W) + P2.ypos);
+    
+    safezone.zone.x[3] = (sint32)((-sn * W) + P1.xpos);
+    safezone.zone.y[3] = (sint32)(( cs * W) + P1.ypos);
+    
+    safezone.zone.numVertex = 4;
+    
+    // 最大最小のセット
+    safezone.zone.minx = LONG_MAX;
+    safezone.zone.miny = LONG_MAX;
+    safezone.zone.maxx = LONG_MIN;
+    safezone.zone.maxy = LONG_MIN;
+
+    for( i = 0; i < safezone.zone.numVertex; i++ )
+    {
+        if( safezone.zone.minx > safezone.zone.x[i] ) { safezone.zone.minx = safezone.zone.x[i]; }
+        if( safezone.zone.maxx < safezone.zone.x[i] ) { safezone.zone.maxx = safezone.zone.x[i]; }
+
+        if( safezone.zone.miny > safezone.zone.y[i] ) { safezone.zone.miny = safezone.zone.y[i]; }
+        if( safezone.zone.maxy < safezone.zone.y[i] ) { safezone.zone.maxy = safezone.zone.y[i]; }
+    }
+}
+
+//---------------------------------------------------------------------------
+/**
+ * クリッピングエリア情報の送信
+ */
+//---------------------------------------------------------------------------
+static void SafetyZone_SendDebugMsg(void)
+{
+    sint16 i,size;
+    uint8  buf[64], *ptr;
+
+    ptr = &buf[0];
+
+    memcpy((void*)ptr, (void*)&safezone.valid, 2); ptr += 2;
+
+    if( safezone.valid == TRUE )
+    {
+        for( i=0; i<4; i++ )
+        {
+            memcpy((void*)ptr, (void*)&safezone.zone.x[i], 4); ptr += 4;
+            memcpy((void*)ptr, (void*)&safezone.zone.y[i], 4); ptr += 4;
+        }
+
+        size = 36;
+    }
+    else
+    {
+        size = 2;
+    }
+
+    // 送信
+    RpcManager_SendMsgNoAck( CAN_B,
+                        SF_SAFETY_ZONE,
+                        LBI1,
+                        PRIOR_LBI1,
+                        size,
+                        (uint8*)&buf[0]);
+}
+
+/* end of file */

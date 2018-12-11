@@ -1,0 +1,343 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2005 Komatsu Ltd. All rights reserved.
+ * 
+ *  $RCSfile: MaskData.h,v $
+ * $Revision: 1.1.1.1 $
+ *   $Author: tojima $
+ *     $Date: 2005/07/06 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Safety Controller
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#include "MaskData.h"
+#include "SfMask.h"
+#include "AhsTools.h"
+
+// マスクタイプの定義は以下
+/*  -------------------------------------------------------------------
+ *  SensorType:
+ *      MSB(15) 14      13      12      11      10      9       8
+ *      touch   Truck   REG     -       -       -       MMWR    -
+ *      7       6       5       4       3       2       1       LSB(0)
+ *      -       -       -       -       SRRR    SRRF    MMR1C     THEM
+  ------------------------------------------------------------------- */
+
+/**
+ * マスクデータRPCのメッセージ定義
+ */
+typedef struct{
+    sint16  id;                 /* MaskID*/
+    uint16  dummyXNum;
+    sint32  x[MAX_NUM_VERTEX];  /* [mm] */
+    uint16  dummyYNum;
+    sint32  y[MAX_NUM_VERTEX];
+    uint16  num;
+    uint16  dummyTypeNum;
+    uint8   maskType[16];
+    uint16  truckID;
+    uint8   direction;
+    sint8   priority;
+} structRpcMaskMsg;
+
+
+//---------------------------------------------------------------------------
+/**
+ * マスクデータの初期化
+ * @param *mask マスクデータオブジェクトのポインタ
+ */
+//---------------------------------------------------------------------------
+void MaskData_Init(StructMaskData *mask)
+{
+    MaskData_Delete(mask);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * マスクセットRPCを受信し、マスクデータにコピーする
+ * @param *mask マスクデータオブジェクトのポインタ
+ * @param *msg  RPCバッファのポインタ
+ * @retval FALSE 
+ * @retval TRUE  
+ *
+ */
+//---------------------------------------------------------------------------
+bool MaskData_Set( StructMaskData *mask, const uint8 *msg )
+{
+    uint16 i,adr=0;
+    structRpcMaskMsg  rpcBuf;
+
+    // --------------------------
+    // RPC bufferに一旦コピー
+    // --------------------------
+
+    rpcBuf.id        = Tools_GetPtrToShortS( (uint8*)&msg[adr]); adr += 2;
+    // IDの制限
+    if( rpcBuf.id == -1 )
+    {
+        return(FALSE);
+    }
+
+    // << X座標 >>
+    rpcBuf.dummyXNum = Tools_GetPtrToShortU( (uint8*)&msg[adr]); adr += 2;
+    if( rpcBuf.dummyXNum > MAX_NUM_VERTEX ) { return(FALSE); }    // 頂点数の制限
+
+    // 頂点のX座標のセット
+    for( i=0; i<rpcBuf.dummyXNum; i++ )
+    {
+        rpcBuf.x[i] = Tools_GetPtrToLongS( (uint8*)&msg[adr] ); adr += 4;
+    }
+
+    // << Y座標 >>
+    rpcBuf.dummyYNum = Tools_GetPtrToShortU( (uint8*)&msg[adr]); adr += 2;
+    if( rpcBuf.dummyYNum > MAX_NUM_VERTEX ) { return(FALSE); }    // 頂点数の制限
+
+    // 頂点のY座標のセット
+    for( i=0; i<rpcBuf.dummyYNum; i++ )
+    {
+        rpcBuf.y[i] = Tools_GetPtrToLongS( (uint8*)&msg[adr] ); adr += 4;
+    }
+
+    // 頂点数
+    rpcBuf.num = Tools_GetPtrToShortU( (uint8*)&msg[adr]); adr += 2;
+    if( rpcBuf.num > MAX_NUM_VERTEX ) { return(FALSE); }   // 頂点数の制限
+
+    // マスクタイプ配列の数（16個固定）
+    rpcBuf.dummyTypeNum = Tools_GetPtrToShortU( (uint8*)&msg[adr]); adr += 2;
+    if( rpcBuf.dummyTypeNum > 16 ) { return(FALSE); }      // 16個以上ならおかしい
+
+    // マスクタイプのセット
+    for( i=0; i<rpcBuf.dummyTypeNum; i++ )
+    {
+        rpcBuf.maskType[i] = msg[adr]; adr += 1;
+    }
+
+    rpcBuf.truckID   = Tools_GetPtrToShortU( (uint8*)&msg[adr]); adr += 2;
+    rpcBuf.direction = msg[adr]; adr += 1;
+    rpcBuf.priority  = (sint8)msg[adr]; adr += 1;
+    
+
+    // --------------------------
+    // MASK Infoにコピー
+    // --------------------------
+    mask->numVertex = rpcBuf.num;
+
+    for(i=0;i<mask->numVertex;i++)
+    {
+        mask->x[i] = rpcBuf.x[i];
+        mask->y[i] = rpcBuf.y[i];
+    }
+    mask->maskTypeRadar  = (MaskType)rpcBuf.maskType[9];
+/*
+    if( rpcBuf.maskType[0] > 100 )
+    {
+        mask->maskTypeTRadar = (MaskType)(rpcBuf.maskType[0]-100);  // 100引く
+    }
+*/
+    mask->maskTypeTRadar = maskRegular;  // TruckTypeMaskは使わない
+
+    mask->maskTypeUtil   = (MaskType)rpcBuf.maskType[14];
+//  mask->maskTypeREG    = (MaskType)rpcBuf.maskType[13];
+    mask->maskTypeREG    = maskRegular;  // REGマスクは使わない
+
+    mask->maskTypeLux      = (MaskType)rpcBuf.maskType[1];
+    mask->maskTypeSrrFront = (MaskType)rpcBuf.maskType[2];
+    mask->maskTypeSrrRear  = (MaskType)rpcBuf.maskType[3];
+
+/*
+    ////////////
+    // テスト用(TruckTypeMaskをLuxMaskに使う
+    if( ( rpcBuf.maskType[0] == 0 ) || ( rpcBuf.maskType[0] == 99 ) )
+    {
+        mask->maskTypeLux      = rpcBuf.maskType[0];
+        mask->maskTypeSrrFront = rpcBuf.maskType[0];
+        mask->maskTypeSrrRear  = rpcBuf.maskType[0];
+    }
+    else 
+    {
+        mask->maskTypeLux      = (MaskType)(rpcBuf.maskType[0]-90);
+        mask->maskTypeSrrFront = (MaskType)(rpcBuf.maskType[0]-80);
+        mask->maskTypeSrrRear  = (MaskType)(rpcBuf.maskType[0]-80);
+    }
+    ////////////
+*/
+
+    mask->prior          = rpcBuf.priority;
+    
+    // エリアの最大、最小のセット
+    for(i=0;i<mask->numVertex;i++)
+    {
+        if( mask->minx > mask->x[i] ) { mask->minx = mask->x[i]; }
+        if( mask->maxx < mask->x[i] ) { mask->maxx = mask->x[i]; }
+        if( mask->miny > mask->y[i] ) { mask->miny = mask->y[i]; }
+        if( mask->maxy < mask->y[i] ) { mask->maxy = mask->y[i]; }
+    }
+
+    // 最後にマスクIDをコピーする
+    // IDがコピーされるまでは、このマスクはInvalidのままである
+    mask->id = rpcBuf.id;
+
+    return(TRUE);
+}
+
+
+//---------------------------------------------------------------------------
+/**
+ * マスクデータの削除
+ * @retval  TRUE :削除成功
+ * @retval  FALSE:最初から空
+ */
+//---------------------------------------------------------------------------
+bool MaskData_Delete(StructMaskData *mask)
+{
+    sint16 i;
+    bool   ret;
+   
+    if( mask->id == -1 ) // 最初からマスクは存在していない
+    {
+        ret = FALSE;
+    }
+    else
+    {
+        mask->id = -1;
+        mask->numVertex = 0;
+
+        for(i=0;i<MAX_NUM_VERTEX;i++)
+        {
+            mask->x[i] = 0;
+            mask->y[i] = 0;
+        }
+        mask->maskTypeRadar    = maskRegular;
+        mask->maskTypeTRadar   = maskRegular;
+        mask->maskTypeUtil     = maskRegular;
+        mask->maskTypeREG      = maskRegular;
+        mask->maskTypeLux      = maskRegular;
+        mask->maskTypeSrrFront = maskRegular;
+        mask->maskTypeSrrRear  = maskRegular;
+
+        mask->minx = LONG_MAX;
+        mask->maxx = LONG_MIN;
+        mask->miny = LONG_MAX;
+        mask->maxy = LONG_MIN;
+
+        ret = TRUE;
+    }
+
+    return(ret);
+}
+
+
+//---------------------------------------------------------------------------
+/**
+ * 指定された点がマスクの中か外とかどうか
+ * @param *mask マスクデータオブジェクトのポインタ
+ * @param x [mm]
+ * @param y [mm]
+ * @retval TRUE マスクエリアの中
+ * @retval FALSE マスクエリアの外
+ */
+//---------------------------------------------------------------------------
+bool MaskData_IsInside(const StructMaskData *mask, sint32 x, sint32 y)
+{
+    sint16  hits = 0;
+    sint16  i,j,n;
+    sint32  ySave = 0;
+    sint32  dx,dy;
+    sint32  rx,ry;
+    float32 s;
+
+    if(   ( x >= mask->minx) && ( x <= mask->maxx) 
+       && ( y >= mask->miny) && ( y <= mask->maxy) )
+    {
+        hits=0;
+        ySave=0;
+
+        /* Find a vertex that's not on the halfline */
+        i = 0;
+        while( (i < mask->numVertex) && (mask->y[i] == y) )
+        {
+            i++;
+        }
+
+        // まずありえないが、iがNUM_ZONE_VERTEXに等しい（すべての点が同一水平線上）
+        // の場合はエリア外とする
+        if( i == mask->numVertex ) 
+        {
+            return(FALSE);
+        }
+
+        /* Walk the edges of the polygon */
+        for(n = 0; n < mask->numVertex; n++)
+        {
+            j = (i + 1) % (sint16)(mask->numVertex);
+
+            dx = mask->x[j] - mask->x[i];
+            dy = mask->y[j] - mask->y[i];
+
+            /* Ignore horizontal edges completely */
+            if( dy != 0 )
+            {
+                /* Check to see if the edge intersects */
+
+                /* the horizontal halfline through (x, y) */
+                rx = x - mask->x[i];
+                ry = y - mask->y[i];
+
+                /* Deal with edges starting or ending on the halfline */
+                if( (mask->y[j] == y) && (mask->x[j] >= x) )
+                {
+                    ySave = mask->y[i];
+                }
+        
+                if( (mask->y[i] == y) && (mask->x[i] >= x) )
+                {
+                    if( (ySave > y) != (mask->y[j] > y) )
+                    {
+                        hits--;
+                    }
+                }
+
+                /* Tally intersections with halfline */
+                s = (float32)ry / (float32)dy;
+                if(( (s >= 0.0) && (s <= 1.0) ) && ((s * (float32)dx) >= (float32)rx) )
+                {
+                    hits++;
+                }
+            }
+
+            i = j;
+        }
+
+        /* Inside if number of intersections odd */
+        return ((hits % 2) != 0);
+    }
+    return(FALSE);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * @retval TRUE  マスクバッファの中身が空（使える）
+ * @retval FALSE マスクバッファが使用中（使えない）
+ */
+//---------------------------------------------------------------------------
+bool MaskData_IsAvailable(const StructMaskData *mask)
+{
+    bool ret;
+
+    if( mask->id == -1 ) 
+    {
+        ret = TRUE;
+    }
+    else 
+    {
+        ret = FALSE;
+    }
+
+    return(ret);
+}
+

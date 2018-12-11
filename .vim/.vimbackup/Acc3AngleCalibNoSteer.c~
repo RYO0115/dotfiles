@@ -1,0 +1,794 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2006 Komatsu Ltd. All rights reserved.
+ * 
+ *  $RCSfile: Acc3AngleCalib.c,v $
+ * $Revision: 1.1.1.1 $
+ *   $Author: tojima $
+ *     $Date: 2005/07/06 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Safety Controller
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#include "ahscommon.h"
+#include "ClippingAreaManager.h"
+#include "ModeManager.h"
+#include "Acc3Manager.h"
+#include "Acc3AngleCalib.h"
+//#include "RevolvingUnit.h"
+#include "CalibDef.h"
+#include "AppNvram.h"
+#include "Acc3AngleCalibNoSteer.h"
+#include "smath32.h"
+#include "AppIfdef.h"
+
+
+#define ACC3_TIME1SEC   10
+#define ACC3_TIME2SEC   20
+#define ACC3_TIME5SEC   50
+#define ACC3_TIME5MIN   3000
+
+#define MIN_RANGE 27500  
+#define MAX_RANGE 32500  
+//#define MIN_POWER -350
+#define MIN_POWER -380
+
+
+#define TARGET_YPOS_ACC3 6650.0 // [mm]
+#define TARGET_YPOS_ESR  9750.0 // [mm]
+
+
+
+/**
+ * キャリブレーションクラスの属性定義
+ */
+typedef struct{
+    float32  ypos;         // [mm]
+    float32  ave_y;        // [mm]
+    float32  ave_yPrev;    // [mm]
+    float32  sum;          
+
+    sint16 circular;       // 設計値からのオフセット角
+    sint16 rollBackAngle;  
+
+    sint32 count;        
+    sint32 timer;        
+    sint32 limitTimer;   
+    uint16 otherTarget;  
+    uint16 noTarget;     
+    sint16 progress;     
+    uint16 prevScanIndex;
+    uint16 calibCount;   
+    CalibStatus status;  
+
+    float32  nominalY;     // [mm] ターゲットの位置
+
+} StructAngleCalibNoSteer;
+
+// キャリブレーションの進捗度計算テーブル
+static const sint16 Acc3CalibProgressTable[2][5] =
+{
+    { 50,  100,  200,  500, 1000 },
+    { 95,   30,   15,   10,    5 }
+};
+
+static StructAngleCalibNoSteer calibNoSteer[ODS_SENSOR_NUM];
+static RadarPosition calibItemNoSteer;
+
+
+/**
+ * プライベート関数
+ */
+static CalibStatus Acc3AngleCalibNoSteer_Proc(RadarPosition pos);
+static CalibStatus Acc3AngleCalibNoSteer_FixRadar(RadarPosition pos);
+
+static void Acc3AngleCalibNoSteer_Clear(RadarPosition pos);
+static void Acc3AngleCalibNoSteer_Again(RadarPosition pos);
+static void Acc3AngleCalibNoSteer_End(void);
+
+static sint16 Acc3AngleCalibNoSteer_CalcProgressFromTable(sint16 ii, sint16 dy);
+static void   Acc3AngleCalibNoSteer_SetCurrentOffsetAngle(RadarPosition pos);
+
+
+
+//---------------------------------------------------------------------------
+/**
+ * 初期化
+ */
+//---------------------------------------------------------------------------
+void Acc3AngleCalibNoSteer_Init(void)
+{ 
+    sint16  ii;
+    sint16  odsType;
+
+    calibItemNoSteer = posNone;
+    odsType = AppNvram_GetOdsType();
+
+    for( ii=0; ii<ODS_SENSOR_NUM; ii++ )
+    {
+        // 変数クリア
+        calibNoSteer[ii].ypos          = 0;
+        calibNoSteer[ii].ave_y         = 0;
+        calibNoSteer[ii].ave_yPrev     = 0;
+
+        calibNoSteer[ii].circular      = 0;
+        calibNoSteer[ii].rollBackAngle = 0;
+
+        calibNoSteer[ii].calibCount    = 0;
+        calibNoSteer[ii].sum           = 0;
+        calibNoSteer[ii].count         = 0;
+        calibNoSteer[ii].timer         = 0;
+        calibNoSteer[ii].limitTimer    = 0;
+        calibNoSteer[ii].otherTarget   = 0;
+        calibNoSteer[ii].noTarget      = 0;
+        calibNoSteer[ii].prevScanIndex = 0;
+        calibNoSteer[ii].progress      = PROGRESS_START;
+        calibNoSteer[ii].status        = calibNone;
+    }
+
+    // ターゲットをおく位置
+    // レーダで計測したY座標（Lat方向）がこの位置になるようにパラメータを調節する
+    // キャリブレーションターゲットは、レーダから30mの距離（正確でなくても良い）
+    // かつ、中央から左右6.65mに設置する
+    if( (odsType==ESRX3_LUXX2_SRRX4)||(odsType==ESRX3_LUXX2) )
+    {
+		calibNoSteer[0].nominalY  = -TARGET_YPOS_ESR;  // Right  9.75m
+    	calibNoSteer[1].nominalY  =              0.0;  // Center 0m
+    	calibNoSteer[2].nominalY  =  TARGET_YPOS_ESR;  // Left   9.75m
+    	calibNoSteer[3].nominalY  =              0.0;  // Rear
+	}
+	else
+	{
+		calibNoSteer[0].nominalY  = -TARGET_YPOS_ACC3;  // Right  6.65m
+    	calibNoSteer[1].nominalY  =               0.0;  // Center 0m
+    	calibNoSteer[2].nominalY  =  TARGET_YPOS_ACC3;  // Left   6.65m
+    	calibNoSteer[3].nominalY  =               0.0;  // Rear
+    }
+
+}
+//---------------------------------------------------------------------------
+/**
+ * キャリブレーションメイン
+ */
+//---------------------------------------------------------------------------
+void Acc3AngleCalibNoSteer_Main(void)
+{
+    static CalibStatus ret;
+    sint16 i;
+
+    // キャリブ中以外は何もしない
+    if( calibItemNoSteer == posNone ) 
+    {
+        ret = calibNone;
+    }
+    else
+    {
+       // キャリブ中メンテナンスモードでなくなったら、キャリブを中止する
+       if( ( Mode_GetCurrentMode() != modeMaintenance )
+        && ( Mode_GetPreviousMode() == modeMaintenance )
+        )
+       {
+           for( i=0; i<ODS_SENSOR_NUM; i++ )
+           {
+               calibNoSteer[i].progress = PROGRESS_FAIL;
+           }
+
+           Acc3AngleCalibNoSteer_End();
+       }
+       else
+       {
+           // キャリブレーション実行中
+           if( ret != calibDone )
+           {
+               ret = Acc3AngleCalibNoSteer_FixRadar(calibItemNoSteer);
+           }
+           else  // ret == calibDone
+           {
+               Acc3AngleCalibNoSteer_End();
+            }
+        }
+    }
+}
+
+
+//---------------------------------------------------------------------------
+/**
+ * キャリブレーション開始
+ * @param  pos レーダの位置
+ */
+//---------------------------------------------------------------------------
+sint16 Acc3AngleCalibNoSteer_Start(RadarPosition pos)
+{
+    sint16 ret;
+    
+    // メンテナンスモードでなければ受け付けない
+    if( Mode_GetCurrentMode() != modeMaintenance )
+    {
+        ret = FAIL;
+    }
+    else
+    {
+       // レーダがなければキャリブしない
+       if( ( pos==posRight )
+        || ( pos==posCenter) 
+        || ( pos==posLeft  ) 
+          )
+        {
+           if( Acc3Manager_isRadarAvailable(pos) == TRUE ) 
+            {
+               // 変数クリア
+               Acc3AngleCalibNoSteer_Clear(pos);
+
+                #ifdef _ACC3_ANGLE_CALIB_DEBUG_
+                    CanDebugPrintf("calibNoSteer start");
+                #endif
+
+                // 
+                calibItemNoSteer = pos;
+
+                // クリッピングエリアをセット
+                ClippingArea_SetDummyZone(zoneCalibration);
+                    
+                // Radiate/Scanning開始
+                Acc3Manager_RadiateScanningStart();
+
+                // 現在の角度を記憶する
+                Acc3AngleCalibNoSteer_SetCurrentOffsetAngle(pos);
+
+                ret = SUCCESS;
+            }
+            else
+            {
+                ret = FAIL;
+
+                #ifdef _ACC3_ANGLE_CALIB_DEBUG_
+                    CanDebugPrintf("not installed");
+                #endif
+            }
+        }
+        else
+        {
+               ret = FAIL;
+
+            #ifdef _ACC3_ANGLE_CALIB_DEBUG_
+                CanDebugPrintf("wrong channel");
+            #endif
+        }
+    }
+    
+    return(ret);
+}
+//---------------------------------------------------------------------------
+/**
+ * キャリブレーションのキャンセル
+ */
+//---------------------------------------------------------------------------
+sint16 Acc3AngleCalibNoSteer_Cancel(RadarPosition pos)
+{
+    sint16 ret, ii;
+    
+    if( calibItemNoSteer != pos ) 
+    {
+        ret = FAIL;
+    }
+    else
+    {
+        // 既にオフセット角を変更していたら元に戻す
+        // NVRAMは変更しない
+        ii = (sint16)pos;
+
+        if( ( 0 <= ii ) && ( ii < ODS_SENSOR_NUM ) )
+        {
+            Acc3Manager_ChangeScanOffset(pos, calibNoSteer[ii].rollBackAngle, FALSE);
+        }
+
+        // キャリブレーション終了
+        Acc3AngleCalibNoSteer_End();
+
+        ret = SUCCESS;
+
+        #ifdef _ACC3_ANGLE_CALIB_DEBUG_
+            CanDebugPrintf("cancel");
+        #endif
+
+    }
+    return(ret);
+}
+//---------------------------------------------------------------------------
+/**
+ * キャリブ進捗の取得
+ * @return 進捗[%]
+ * @param  pos レーダの位置
+ */
+//---------------------------------------------------------------------------
+sint16 Acc3AngleCalibNoSteer_GetProgress(RadarPosition pos)
+{
+    sint16  ii;
+    sint16  prog;
+
+    if( ( pos==posRight ) 
+     || ( pos==posLeft ) 
+     || ( pos==posCenter ) 
+     )
+    {
+        ii = (sint16)pos;
+        prog = calibNoSteer[ii].progress;
+    }
+    else
+    {
+        prog = -1;
+    }
+
+    return(prog);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * デフォルト値に戻す
+ */
+//---------------------------------------------------------------------------
+void Acc3AngleCalibNoSteer_RestoreDefault(void)
+{
+    // 設計値に戻す
+    Acc3Manager_ChangeScanOffset(posRight, 0, TRUE);
+    Acc3Manager_ChangeScanOffset(posCenter,0, TRUE);
+    Acc3Manager_ChangeScanOffset(posLeft,  0, TRUE);
+    Acc3Manager_ChangeScanOffset(posSteer, 0, TRUE);
+}
+
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+// プライベート関数
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+/**
+ * キャリブ計算
+ * @retval calibFail
+ * @retval calibSuccess
+ * @retval calibDoing
+ */
+//---------------------------------------------------------------------------
+static CalibStatus Acc3AngleCalibNoSteer_Proc(RadarPosition pos)
+{
+    sint16 ii;
+    float32 dx, dy, deltaY;  // [mm]
+    sint32 range;
+    sint16 power;
+    sint16 dCirc;
+
+    #ifdef _ACC3_ANGLE_CALIB_DEBUG_
+    uint8 str[128];
+    #endif
+
+    ii = (sint16)pos;
+    
+    if( (ii < 0 ) || (ii >= ODS_SENSOR_NUM) )
+    {
+        return(calibFail);
+    }
+    else
+    {
+        // 次へ進む
+    }
+
+    // レーダが異常のときは終了
+    if( Acc3Manager_GetDiagnosisCode( pos )!= acc3Ok )
+    {
+        calibNoSteer[ii].status   = calibFail;
+        return(calibFail);
+    }
+    else
+    {
+        // 次へ進む
+    }
+
+    // ステータスのチェック
+    if( calibNoSteer[ii].status != calibDoing )
+    {
+        return(calibNoSteer[ii].status);
+    }
+    else
+    {
+        // 次へ進む
+    }
+
+    // 新しいデータでなければ無視
+    if( Acc3Manager_GetScanIndex(pos) == calibNoSteer[ii].prevScanIndex )
+    {
+        return(calibNoSteer[ii].status);
+    }
+    else
+    {
+        // 次へ進む
+    }
+
+    // 次回の計算に使う
+    calibNoSteer[ii].prevScanIndex = Acc3Manager_GetScanIndex(pos);
+
+    // ターゲットを検出しているときだけ
+    if( Acc3Manager_GetTargetValidFlag(pos) == ON )
+    {
+
+        dy = (float32)Acc3Manager_GetTargetYpos(pos);
+        dx = (float32)Acc3Manager_GetTargetXpos(pos);
+        range = Acc3Manager_GetRange(pos);
+        power = Acc3Manager_GetPower(pos);
+
+        // 反射強度が-35dB以上ならOK
+        if( power >= MIN_POWER )
+        {
+            // 
+            calibNoSteer[ii].sum += dy;
+            calibNoSteer[ii].count++;
+            calibNoSteer[ii].ave_y = calibNoSteer[ii].sum / (float32)calibNoSteer[ii].count;
+
+            // ターゲットの真の位置と計測位置の差
+            deltaY = calibNoSteer[ii].ave_y - calibNoSteer[ii].nominalY;    // [mm]
+
+            #ifdef _ACC3_ANGLE_CALIB_DEBUG_
+                if( (AdtMain_GetMainCounter() % T_200MSEC ) == 0 )
+                {
+                    sprintf(str,"%d (%3.2f %3.2f) %3.2f %3.2f %d",
+                            calibNoSteer[ii].count,
+                            0.001*dx, 0.001*dy,
+                            0.001*calibNoSteer[ii].ave_y,
+                            0.001*deltaY,
+                            calibNoSteer[ii].timer);
+                    CanDebugPrintf(str);
+                }
+            #endif
+
+            // progressの計算
+            if( calibNoSteer[ii].count >= 20 )
+            {
+                calibNoSteer[ii].progress = Acc3AngleCalibNoSteer_CalcProgressFromTable(ii,(sint16)deltaY);
+            }
+            else
+            {
+                // progressは更新しない
+            }
+
+            // 平均のdyの変化が10mm以内ならタイマをインクリメント
+            if( fabs(calibNoSteer[ii].ave_y - calibNoSteer[ii].ave_yPrev) < 10.0 )
+            {
+                calibNoSteer[ii].timer++;
+            }
+            else
+            {
+                calibNoSteer[ii].timer = 0;
+            }
+
+            // dyの変化10mm以内が5秒間続いたら収束したとみなす
+            if( calibNoSteer[ii].timer > ACC3_TIME5SEC )
+            {
+                // dyが50mm以下ならキャリブレーション終了
+                if( fabs(deltaY) < 50.0 )
+                {
+                    calibNoSteer[ii].status = calibSuccess;  // 終了
+
+                    #ifdef _ACC3_ANGLE_CALIB_DEBUG_
+                        CanDebugPrintf("done");
+                    #endif
+                }
+                else
+                {
+                    // deltaYの分だけ角度を修正
+                    #ifdef _ACC3_ANGLE_CALIB_DEBUG_
+                        sprintf(str,"Before change %d ",calibNoSteer[ii].circular);
+                        CanDebugPrintf(str);
+                    #endif
+                    dCirc = (sint16)(0.0005 * deltaY * 182);
+                    calibNoSteer[ii].circular += dCirc;
+
+                    #ifdef _ACC3_ANGLE_CALIB_DEBUG_
+                        sprintf(str,"change %d :%d",calibNoSteer[ii].circular, dCirc);
+                        CanDebugPrintf(str);
+                    #endif
+            		#ifdef _ACC3_ANGLE_CALIB_DEBUG_
+	                    sprintf(str,"change: %d (%3.2f %3.2f) %3.2f %3.2f %d",
+    	                        calibNoSteer[ii].count,
+        	                    0.001*dx, 0.001*dy,
+            	                0.001*calibNoSteer[ii].ave_y,
+                	            0.001*deltaY,
+                    	        calibNoSteer[ii].timer);
+                    	CanDebugPrintf(str);
+            		#endif
+
+                    // NVRAMは変更しない
+                    Acc3Manager_ChangeScanOffset(pos, calibNoSteer[ii].circular, FALSE);
+                    
+                    // 再計算のため変数をクリア
+                    Acc3AngleCalibNoSteer_Again(pos);
+                }
+            }
+            else
+            {
+                //
+            }
+
+            // 次回の計算に使う
+            calibNoSteer[ii].ave_yPrev   = calibNoSteer[ii].ave_y;
+            calibNoSteer[ii].otherTarget = 0;
+            calibNoSteer[ii].noTarget    = 0;
+
+        }
+        // ターゲットの距離が指定距離と異なる場合は、何か違う物を検知していると判定する
+        else
+        {
+			calibNoSteer[ii].otherTarget++;
+            // 2秒間検知し続けたら失敗
+            if( calibNoSteer[ii].otherTarget > ACC3_TIME2SEC )
+            {
+                calibNoSteer[ii].status   = calibFail;
+
+            #ifdef _ACC3_ANGLE_CALIB_DEBUG_
+                CanDebugPrintf("other target");
+            #endif
+
+            }
+        }
+    }
+    // 検知していない
+    else
+    {
+        #ifdef _ACC3_ANGLE_CALIB_DEBUG_
+            CanDebugPrintf("Oh, no target");
+        #endif
+
+        // 5秒間何も検知しなければ失敗
+        calibNoSteer[ii].noTarget++;
+        if( calibNoSteer[ii].noTarget > ACC3_TIME5SEC )
+        {
+            calibNoSteer[ii].status   = calibFail;
+
+        #ifdef _ACC3_ANGLE_CALIB_DEBUG_
+            CanDebugPrintf("no target");
+        #endif
+
+        }
+    }
+
+
+    // 5分たっても収束しなければ強制終了
+    calibNoSteer[ii].limitTimer++;
+    if( calibNoSteer[ii].limitTimer > T_5MIN )
+    {
+        calibNoSteer[ii].status   = calibFail;
+
+
+        #ifdef _ACC3_ANGLE_CALIB_DEBUG_
+            CanDebugPrintf("too long");
+        #endif
+
+    }
+    
+    return(calibNoSteer[ii].status);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * レーダのキャリブレーション
+ */
+//---------------------------------------------------------------------------
+static CalibStatus Acc3AngleCalibNoSteer_FixRadar(RadarPosition pos)
+{
+    CalibStatus ret,status;
+    sint16 ii;
+
+    #ifdef _ACC3_ANGLE_CALIB_DEBUG_
+    uint8 str[128];
+    #endif
+
+    ii = (sint16)pos;
+
+    if( (ii < 0 ) || (ii >= ODS_SENSOR_NUM) )
+    {
+        #ifdef _ACC3_ANGLE_CALIB_DEBUG_
+            CanDebugPrintf("wrong ii");
+        #endif
+
+        return(calibFail);
+    }
+
+    // レーダがなければ即終了
+    if( Acc3Manager_isRadarAvailable(pos) == FALSE ) 
+    {
+        calibNoSteer[ii].progress = PROGRESS_COMPLETE;
+        calibNoSteer[ii].status   = calibSuccess;
+
+        #ifdef _ACC3_ANGLE_CALIB_DEBUG_
+            CanDebugPrintf("???");
+        #endif
+
+        return(calibDone);
+    }
+
+    // キャリブ計算
+    ret = Acc3AngleCalibNoSteer_Proc(pos);
+
+    if( ret==calibDoing )
+    {
+        #ifdef _ACC3_ANGLE_CALIB_DEBUG_
+        if( (AdtMain_GetMainCounter() % T_1SEC ) == 2 )
+        {
+            sprintf(str,"progress %d ", calibNoSteer[ii].progress);
+            CanDebugPrintf(str);
+        }
+        #endif
+
+        status = calibDoing;
+    }
+    else
+    {
+        if( ret==calibSuccess )
+        {
+            // RadarパラメータをNVRAMに書き込み
+            Acc3Manager_ChangeScanOffset(pos, calibNoSteer[ii].circular, TRUE);
+
+            // Progress100%
+            calibNoSteer[ii].progress = PROGRESS_COMPLETE;
+
+            #ifdef _ACC3_ANGLE_CALIB_DEBUG_
+                CanDebugPrintf("success");
+            #endif
+
+        }
+        else if( ret==calibFail )
+        {
+            // 失敗
+            calibNoSteer[ii].progress = PROGRESS_FAIL;
+
+            // rollback
+            Acc3Manager_ChangeScanOffset(pos, calibNoSteer[ii].rollBackAngle, FALSE);
+
+            #ifdef _ACC3_ANGLE_CALIB_DEBUG_
+            CanDebugPrintf("fail");
+            #endif
+
+        }
+
+        status = calibDone;
+    }
+
+    return(status);
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+static void Acc3AngleCalibNoSteer_Clear(RadarPosition pos)
+{
+    sint16  ii;
+    
+    ii = (sint16)pos;
+
+    if( (0 <= ii) && (ii < ODS_SENSOR_NUM) )
+    {
+        calibNoSteer[ii].calibCount    = 0;
+        calibNoSteer[ii].ypos          = 0;
+        calibNoSteer[ii].ave_y         = 0;
+        calibNoSteer[ii].ave_yPrev     = 0;
+        calibNoSteer[ii].sum           = 0;
+        calibNoSteer[ii].count         = 0;
+        calibNoSteer[ii].timer         = 0;
+        calibNoSteer[ii].limitTimer    = 0;
+        calibNoSteer[ii].prevScanIndex = 0;
+        calibNoSteer[ii].otherTarget   = 0;
+        calibNoSteer[ii].noTarget      = 0;
+        calibNoSteer[ii].progress      = 0;
+        calibNoSteer[ii].status        = calibDoing;
+
+        calibNoSteer[ii].circular      =  30000 - SfNvram_GetRadarOffset(pos);
+    }
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+static void Acc3AngleCalibNoSteer_Again(RadarPosition pos)
+{
+    sint16  ii;
+    
+    ii = (sint16)pos;
+
+    if( (0 <= ii) && (ii < ODS_SENSOR_NUM) )
+    {
+        calibNoSteer[ii].ypos          = 0;
+        calibNoSteer[ii].ave_y         = 0;
+        calibNoSteer[ii].ave_yPrev     = 0;
+        calibNoSteer[ii].sum           = 0;
+        calibNoSteer[ii].count         = 0;
+        calibNoSteer[ii].timer         = 0;
+        calibNoSteer[ii].prevScanIndex = 0;
+        calibNoSteer[ii].otherTarget   = 0;
+        calibNoSteer[ii].noTarget      = 0;
+        calibNoSteer[ii].status        = calibDoing;
+    }
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+static void Acc3AngleCalibNoSteer_End(void)
+{
+    calibItemNoSteer = posNone;
+
+    // クリッピングエリア解除
+    ClippingArea_SetDummyZone(zoneNone);
+        
+    // Radiate/Scanning停止
+    Acc3Manager_RadiateScanningStop();
+}
+
+
+//---------------------------------------------------------------------------
+/**
+ * キャンセルしたときのために覚えておく
+ */
+//---------------------------------------------------------------------------
+static void Acc3AngleCalibNoSteer_SetCurrentOffsetAngle(RadarPosition pos)
+{
+    sint16 ii;
+
+    ii = (sint16)pos;
+
+    if( (0 <=ii ) && (ii < ODS_SENSOR_NUM) )
+    {
+        calibNoSteer[ii].rollBackAngle = 30000 - SfNvram_GetRadarOffset(pos);
+    }
+}
+
+//---------------------------------------------------------------------------
+/**
+ * @param dy ターゲット位置のNominal値との差[mm]
+ * @return 進捗度 [%]
+ */
+//---------------------------------------------------------------------------
+static sint16 Acc3AngleCalibNoSteer_CalcProgressFromTable(sint16 ii, sint16 dy)
+{
+    sint16 score, score1, score2;
+
+    calibNoSteer[ii].calibCount++;
+    if( calibNoSteer[ii].calibCount >= 95 )
+    {
+        calibNoSteer[ii].calibCount = 95;
+    }
+    else
+    {
+        // do nothing
+    }
+
+    if( dy < 0 ) { dy = -dy; }
+
+    score1 = calibNoSteer[ii].calibCount;
+
+    score2 = hokan1((short)dy, 5, (short*)&Acc3CalibProgressTable);
+
+    // 最初からProgress値が大きくなるのを防ぐため、
+    // 時間と収束度の小さいほうを採用
+
+    if( score1 < score2 )
+    {
+        score = score1;
+    }
+    else
+    {
+        score = score2;
+    }
+
+    return(score);
+}

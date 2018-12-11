@@ -1,0 +1,10 @@
+let g:netrw_dirhistmax  =10
+let g:netrw_dirhist_cnt =8
+let g:netrw_dirhist_1='/home'
+let g:netrw_dirhist_2='/'
+let g:netrw_dirhist_3='/home/komatsu/dotfiles/.vim/bundle'
+let g:netrw_dirhist_4='/home/komatsu/dotfiles/.vim'
+let g:netrw_dirhist_5='/home/komatsu/dotfiles'
+let g:netrw_dirhist_6='/home/komatsu/dotfiles/.vim/bundle'
+let g:netrw_dirhist_7='/home/komatsu/ros_indigo/sensor_interface/sick_ldmrs/src'
+let g:netrw_dirhist_8='/home/komatsu/dotfiles/.vim/userautoload/init'

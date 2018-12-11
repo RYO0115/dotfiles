@@ -1,0 +1,250 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2005 Komatsu Ltd. All rights reserved.
+ * 
+ *  $RCSfile: MonSfCommon.h,v $
+ * $Revision: 1.1.1.1 $
+ *   $Author: tojima $
+ *     $Date: 2005/07/06 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Safety Controller
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#include "ahscommon.h"
+#include "MonCtrl.h"
+#include "DataTypes.h"
+#include "AppMain.h"
+#include "AhsTools.h"
+
+#include "MonSfCommon.h"
+
+#include "ModeManager.h"
+#include "TruckInfo.h"
+#include "SpeedOrder.h"
+#include "TruckState.h"
+#include "DriveCont.h"
+
+#include "ClippingAreaManager.h"
+#include "OdsScope.h"
+
+#include "AppIoDefine.h"
+#include "TurnLight.h"
+#include "HeadLight.h"
+#include "ModeLamp.h"
+#include "Horn.h"
+#include "SfHeartbeat.h"
+#include "EGStart.h"
+#include "OdsPower.h"
+#include "BrakeControl.h"
+#include "LuxPower.h"
+#include "ParkingBrake.h"
+
+#include "Course.h"
+#include "AppNvram.h"
+#include "AhsAuxDevice.h"
+#include "Acc3Manager.h"
+
+#include "ErrorManager.h"
+/**
+ */
+typedef struct{
+    //0612データ量を減らす（Contecへの通信が途切れる問題への対応）
+    uint16    timestamp;  // タイムスタンプ
+    uint16    id;         // データID
+    sint16    speedOrder;
+    uint16    currentIndex;
+    uint16    nextZeroIndex;
+    uint16    trajectoryEnd;
+
+    BitDword  din;
+    BitWord   dout;
+    uint16    ain[2];
+
+    sint16    motorRef;
+    ByteWord  reserve[2];   // レーダの構成でデータ内容変わる
+
+    uint8     mode;
+    uint8     fuel;
+
+    uint8     clipAreaNum;
+    uint8     effRange;
+    
+} MonCommonMsg;
+
+/**
+ */
+typedef struct{
+    MonCommonMsg   data;  // データメッセージ構造体
+    StructMonCtrl  ctrl;     // 送信コントロールクラス
+} StructMonSfCommon;
+ 
+/**
+ * インスタンス定義
+ */
+static StructMonSfCommon moncommon;
+
+//---------------------------------------------------------------------------
+/**
+ * 初期化
+ */
+//---------------------------------------------------------------------------
+void MonSfCommon_Init(void)
+{
+    MonCtrl_Init( &moncommon.ctrl, 
+                  (sint16)sizeof(MonCommonMsg),
+                  (uint8*)&moncommon.data,
+                  MonSfCommon_SetData
+                 );
+}
+
+//---------------------------------------------------------------------------
+/**
+ * メイン
+ */
+//---------------------------------------------------------------------------
+void MonSfCommon_Main(void)
+{
+    MonCtrl_Main(&moncommon.ctrl);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * データのセット
+ */
+//---------------------------------------------------------------------------
+void MonSfCommon_SetData(void)
+{
+	sint16 odsType;
+	
+	// レーダ構成の取得
+	odsType = AppNvram_GetOdsType();
+
+    //データ量を減らす（Contecへの通信が途切れる問題への対応）
+
+    moncommon.data.timestamp  = (uint16)AdtMain_GetMainCounter();
+    moncommon.data.id         = SF_COMMON;
+    moncommon.data.speedOrder = SpeedOrder_GetSpeed();
+    moncommon.data.mode       = (uint8)Mode_GetCurrentMode();
+    moncommon.data.fuel       = Tools_Sint8ToUint8(TruckState_GetFuelPercentage());
+
+    moncommon.data.din.bitf.bit31 = GetDinStatus(32);
+    moncommon.data.din.bitf.bit30 = GetDinStatus(31);
+    moncommon.data.din.bitf.bit29 = GetDinStatus(30);
+    moncommon.data.din.bitf.bit28 = GetDinStatus(29);
+    moncommon.data.din.bitf.bit27 = GetDinStatus(28);
+    moncommon.data.din.bitf.bit26 = GetDinStatus(27);
+    moncommon.data.din.bitf.bit25 = GetDinStatus(26);
+    moncommon.data.din.bitf.bit24 = GetDinStatus(25);
+    moncommon.data.din.bitf.bit23 = GetDinStatus(24);
+    moncommon.data.din.bitf.bit22 = GetDinStatus(23);
+    moncommon.data.din.bitf.bit21 = GetDinStatus(22);
+    moncommon.data.din.bitf.bit20 = GetDinStatus(21);
+    moncommon.data.din.bitf.bit19 = GetDinStatus(20);
+    moncommon.data.din.bitf.bit18 = GetDinStatus(19);
+    moncommon.data.din.bitf.bit17 = GetDinStatus(18);
+    moncommon.data.din.bitf.bit16 = GetDinStatus(17);
+    moncommon.data.din.bitf.bit15 = GetDinStatus(16);
+    moncommon.data.din.bitf.bit14 = GetDinStatus(15);
+    moncommon.data.din.bitf.bit13 = GetDinStatus(14);
+    moncommon.data.din.bitf.bit12 = GetDinStatus(13);
+    moncommon.data.din.bitf.bit11 = GetDinStatus(12);
+    moncommon.data.din.bitf.bit10 = GetDinStatus(11);
+    moncommon.data.din.bitf.bit9  = GetDinStatus(10);
+    moncommon.data.din.bitf.bit8  = GetDinStatus(9);
+    moncommon.data.din.bitf.bit7  = GetDinStatus(8);
+    moncommon.data.din.bitf.bit6  = GetDinStatus(7);
+    moncommon.data.din.bitf.bit5  = GetDinStatus(6);
+    moncommon.data.din.bitf.bit4  = GetDinStatus(5);
+    moncommon.data.din.bitf.bit3  = GetDinStatus(4);
+    moncommon.data.din.bitf.bit2  = GetDinStatus(3);
+    moncommon.data.din.bitf.bit1  = GetDinStatus(2);
+    moncommon.data.din.bitf.bit0  = GetDinStatus(1);  // DIN0は出力しない
+
+    // AIN
+    moncommon.data.ain[0] = (sint16)GetAinVoltage( AIN_OBSERVER_STATUS_SIG );
+    moncommon.data.ain[1] = (sint16)GetAinVoltage( AIN_REG_BANK_SENSOR );
+
+    // DOUT
+    moncommon.data.dout.bitf.bit0  = 0;//RestReq_GetOutput();
+
+    if( odsType == ACC3X4 )	// Ver1.2, Ver2.0A
+    {
+	    moncommon.data.dout.bitf.bit1  = Turnlight_GetOutput(tlRight);
+	    moncommon.data.dout.bitf.bit2  = Turnlight_GetOutput(tlLeft);
+	}
+	else if( (odsType == ACC3X3_MMR1CX2_SRRX4) 
+	      || (odsType == ESRX3_MMR1CX2_SRRX4)
+	      || (odsType == ESRX3_MMR1CX2) )  // Ver2.0B
+	{
+	    moncommon.data.dout.bitf.bit1  = LuxPower_GetOutput();
+	    moncommon.data.dout.bitf.bit2  = Error_GetAutomaticRestartFlag();
+	}
+	else
+	{
+		moncommon.data.dout.bitf.bit1  = 0;
+		moncommon.data.dout.bitf.bit2  = 0;
+	}
+
+	moncommon.data.dout.bitf.bit3  = EGStart_GetOutput();
+	moncommon.data.dout.bitf.bit4  = ModeLamp_GetOutput(clGreen);
+	moncommon.data.dout.bitf.bit5  = ModeLamp_GetOutput(clYellow);
+	moncommon.data.dout.bitf.bit6  = ModeLamp_GetOutput(clRed);
+	moncommon.data.dout.bitf.bit7  = Headlight_GetOutput();
+	moncommon.data.dout.bitf.bit8  = Horn_GetOutput();
+	moncommon.data.dout.bitf.bit9  = SafetyHeartbeat_GetOutput();
+	moncommon.data.dout.bitf.bit10 = Headlight_GetBeamOutput();
+	moncommon.data.dout.bitf.bit11 = OdsPower_GetOutput();
+	moncommon.data.dout.bitf.bit12 = 0; // 未使用
+	moncommon.data.dout.bitf.bit13 = 0; // 未使用
+	moncommon.data.dout.bitf.bit14 = 0; // 未使用
+	moncommon.data.dout.bitf.bit15 = ParkingBrake_GetOutput(); 
+	
+	moncommon.data.motorRef   = 0;//RevolvingUnit_GetTargetAngle();
+
+	if( odsType == ACC3X4 )	// Ver1.2, Ver2.0A
+	{
+		moncommon.data.reserve[0].word = 0;//RevolvingUnit_GetCurrentAngle();
+		moncommon.data.reserve[1].word = 0;//(sint16)MotorPot_GetVolt();
+	}
+	else if( (odsType == ACC3X3_MMR1CX2_SRRX4)
+	      || (odsType == ESRX3_MMR1CX2_SRRX4)
+	      || (odsType == ESRX3_MMR1CX2) )  // Ver2.0B
+	{
+	    moncommon.data.reserve[0].word  = (uint16)(OdsScope_GetTargetIndex() - TruckInfo_GetCurrentIndex() );
+	    moncommon.data.reserve[1].byte.byte1  = (uint8)OdsScope_GetRoadType();
+	    moncommon.data.reserve[1].byte.byte2  = AdtMain_GetConsumptionMSec();
+	}
+	else
+	{
+		moncommon.data.reserve[0].word = 0;
+		moncommon.data.reserve[1].word = 0;
+	}
+
+    moncommon.data.clipAreaNum = (uint8)ClippingArea_GetAreaNum();
+    moncommon.data.effRange    = (uint8)(OdsScope_GetEffectRange()/1000);  // [m]
+
+    moncommon.data.trajectoryEnd   = (uint16)(Course_GetTrajectoryEndIndex());
+    
+    moncommon.data.currentIndex    = (uint16)(TruckInfo_GetCurrentIndex());
+    moncommon.data.nextZeroIndex   = (uint16)(Course_GetSpeedProfileZeroIndex());
+
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 送信要求コマンドの受信
+ */
+//---------------------------------------------------------------------------
+void MonSfCommon_ReceiveSendReq(uint8 dest, uint8* buf)
+{
+    sint16 interval;
+    
+    interval = Tools_GetPtrToShortS(&buf[0]);
+
+    MonCtrl_SendMonData(&moncommon.ctrl,dest,interval);
+}
+

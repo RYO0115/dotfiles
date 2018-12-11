@@ -1,0 +1,275 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2005 Komatsu Ltd. All rights reserved.
+ * 
+ *  $RCSfile: TruckConfigTable.h,v $
+ * $Revision: 1.1.1.1 $
+ *   $Author: nishijima $
+ *     $Date: 2008/07/14 $
+ *    $State: Exp $
+ *
+ *    @brief: Truck Configuration
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#ifndef __TRUCK_CONF_H_
+#define __TRUCK_CONF_H_
+
+#include "kcommon.h"
+#include "interpolate.h"
+
+#define		_RetardTableNumber	9
+#define		_FrontTableNumber	8
+#define		_RearTableNumber	8
+
+/**
+ * 初期化
+ */
+extern void TruckConfigTable_Init(void);
+
+/**
+ * メイン処理
+ */
+extern void TruckConfigTable_Main(void);
+
+
+// トラックのConfigurationのセット完了フラグ
+extern bool TruckConfigTable_IsConfigReady(void);
+
+// ホイールベース
+extern float32 AHT_Wheelbase(void);
+
+// 空車重量（カタログ値）
+extern float32 AHT_EVW(void);
+
+// 最大積載時の車両総重量
+extern float32 AHT_GVW(void);
+
+// バネ下加重 [ton]
+extern float32 AHT_UnsprungWeight(void);
+
+// 最大積載量 [ton]
+extern float32 AHT_MaxLoadWeight(void);
+
+// タイヤ径
+extern float32 AHT_RollingRadius(void);
+
+// 最大ｽﾃｱﾘﾝｸﾞ切れ角 [rad]
+extern float32 AHT_MaxSteering(void);
+
+// GPS ANTENNA X座標 [mm]
+extern sint32 AHT_GpsAnntennaX(void);
+
+// GPS ANTENNA Y座標 [mm]
+extern sint32 AHT_GpsAnntennaY(void);
+
+// GPS ANTENNA Z座標 [mm]
+extern sint32 AHT_GpsAnntennaZ(void);
+
+// GPS ANTENNA X座標 [mm] 基本値
+extern sint32 AHT_GpsAnntennaX_BASE(void);
+
+// GPS ANTENNA Y座標 [mm] 基本値
+extern sint32 AHT_GpsAnntennaY_BASE(void);
+
+// GPS ANTENNA Z座標 [mm] 基本値
+extern sint32 AHT_GpsAnntennaZ_BASE(void);
+
+// パルスカウンタ→車速への係数（前輪）
+extern float32 AHT_FrontScale(void);
+
+// パルスカウンタ→車速への係数（後輪）
+extern float32 AHT_RearScale(void);
+
+// ステアリング左右アーム取り付け距離
+extern float32 AHT_StArmOffset(void);
+
+// ステアリング左右アーム長さ
+extern float32 AHT_StArmLength(void);
+
+// 後輪の左右タイヤ位置
+extern float32 AHT_RearTyreOffset(void);
+
+// ピッチセンサの取り付け位置 X [mm]
+extern float32 AHT_X_Pitch(void);
+
+// ピッチセンサの取り付け位置 Y [mm]
+extern float32 AHT_Y_Pitch(void);
+
+// ロールセンサの取り付け位置 X [mm]
+extern float32 AHT_X_Roll(void);
+
+// ロールセンサの取り付け位置 Y [mm]
+extern float32 AHT_Y_Roll(void);
+
+// REGセンサターゲット距離(デフォルト) [mm]
+extern float32 AHT_REG_TargetDistance(void);
+
+// REGセンサの取り付け位置 X [mm]
+extern float32 AHT_X_REG(void);
+
+// REGセンサの取り付け位置 Y [mm]
+extern float32 AHT_Y_REG(void);
+
+// ステアリングリンクAのZ平面上の長さ[m]
+extern float32 AHT_StLink_A(void);
+
+// ステアリングリンクBのZ平面上の長さ[m]
+extern float32 AHT_StLink_B(void);
+
+// ステアリングリンクCのZ平面上の長さ[m]
+extern float32 AHT_StLink_C(void);
+
+// 直進時のポテンショ角度α[rad]
+extern float32 AHT_StLink_Alpha(void);
+
+// 直進時のβ(Right),β(Left)の角度[rad]
+extern float32 AHT_StLink_Bata(void);
+
+// ODS クリッピングエリア基本幅 [mm]
+extern float32 AHT_ClippingArea(void);
+
+// ODS レーダの取り付け位置に関する定数定義 [mm]
+extern float32 AHT_OdsDistanceFromRearCenter(sint16 ch);
+
+// ODS レーダの取り付け位置に関する定数定義 [mm]
+extern float32 AHT_OdsSideRadarOffset(sint16 ch);
+
+// ODS レーダの取り付け位置に関する定数定義 [deg]
+extern float32 AHT_OdsSideRadarAngle(sint16 ch);
+
+// フロントブレーキ最大電流
+extern sint32 AHT_GetFrontBrakeMax(void);
+
+// フロントブレーキ最小電流
+extern sint32 AHT_GetFrontBrakeMin(void);
+
+// リアブレーキ最大電流
+extern sint32 AHT_GetRearBrakeMax(void);
+
+// リアブレーキ最小電流
+extern sint32 AHT_GetRearBrakeMin(void);
+
+// リターダテーブル（リターダ能力）のアドレス
+extern float32 *AHT_GetRetardBrakeFrontHigh(void);
+extern float32 *AHT_GetRetardBrakeFrontLow(void);
+extern float32 *AHT_GetRetardBrakeRearHigh(void);
+extern float32 *AHT_GetRetardBrakeRearLow(void);
+
+// PositiveAccelゲインテーブルのアドレス
+extern sint16 *AHT_GetPositiveAccelGain0Deg(void);
+extern sint16 *AHT_GetPositiveAccelGain1Deg(void);
+extern sint16 *AHT_GetPositiveAccelGain2Deg(void);
+extern sint16 *AHT_GetPositiveAccelGain3Deg(void);
+
+// NegativeAccelゲインテーブルのアドレス
+extern sint16 *AHT_GetNegativeAccelGain0Deg(void);
+extern sint16 *AHT_GetNegativeAccelGain1Deg(void);
+extern sint16 *AHT_GetNegativeAccelGain2Deg(void);
+extern sint16 *AHT_GetNegativeAccelGain3Deg(void);
+
+// speed cotrol
+// 通常停車のときのブレーキ力ゲイン
+extern float32 AHT_GetBrakeForceNormalGain(void);
+// Body上げ走行のときブレーキ力ゲイン
+extern float32 AHT_GetBrakeForcePaddockGain(void);
+// 傾斜成分のブレーキ力ゲイン
+extern float32 AHT_GetBrakeForceSlopeGain(void);
+
+// S/T制御ゲイン
+ // ステアリング制御ゲイン（  KH_P  ）
+extern float32 AHT_GetgainKH_P(void);
+ // ステアリング制御ゲイン（  KH_D  ）
+extern float32 AHT_GetgainKH_D(void);
+ // ステアリング制御ゲイン（  KH_I  ）
+extern float32 AHT_GetgainKH_I(void);
+ // ステアリング制御ゲイン（  KL_P  ）
+extern float32 AHT_GetgainKL_P(void);
+ // ステアリング制御ゲイン（  KL_D  ）
+extern float32 AHT_GetgainKL_D(void);
+ // ステアリング制御ゲイン（  KL_I  ）
+extern float32 AHT_GetgainKL_I(void);
+ // ステアリング制御ゲイン（  K_ST_BEFORE  ）
+extern float32 AHT_GetgainK_ST_BEFORE(void);
+ // ステアリング制御ゲイン（  K_HP_ST  ）
+extern float32 AHT_GetgainK_HP_ST(void);
+
+ // ステアリング制御ゲイン（  ADJ_GAIN  ）
+extern float32 AHT_GetgainADJ_GAIN(void);
+
+ // ステアリング制御ゲイン（  K_PRE_BACK  ）
+extern const st_VariableInterpFloat* AHT_GetgainKPreBackTable( void );
+ // ステアリング制御ゲイン（  K_PRE_SLOW  ）
+extern const st_VariableInterpFloat* AHT_GetgainKPreSlowTable( void );
+ // ステアリング制御ゲイン（  K_PRE_HIGH Emp  ）
+extern const st_VariableInterpFloat* AHT_GetgainKPreHighTableE( void );
+ // ステアリング制御ゲイン（  K_PRE_HIGH Loaded ）
+extern const st_VariableInterpFloat* AHT_GetgainKPreHighTableL( void );
+ // ステアリング速度VS電流（ steerSpeedToCurrent ）
+extern const st_InterpFloat* AHT_GetSteeringSpeedToCurrentTable( void );
+
+ //SCS ゲイン K1
+extern float32 AHT_GetgainScsK1(void);
+ //SCS ゲイン K2
+extern float32 AHT_GetgainScsK2(void);
+ //SCS ゲインK3
+extern float32 AHT_GetgainScsK3(void);
+
+/**
+ * LUX関連
+ */
+extern sint16 AHT_GetLuxDistanceFromRearCenterRight(void);
+extern sint16 AHT_GetLuxDistanceFromRearCenterLeft(void);
+extern sint16 AHT_GetLuxSideOffsetRight(void);
+extern sint16 AHT_GetLuxSideOffsetLeft(void);
+extern sint16 AHT_GetLuxAngleOffsetRight(void);
+extern sint16 AHT_GetLuxAngleOffsetLeft(void);
+extern sint16 AHT_GetLuxHeight(void);
+
+/**
+ * MACOM関連
+ */
+extern sint16 AHT_GetMacomFR_DistanceFromRearCenter(void);
+extern sint16 AHT_GetMacomFR_SideOffset(void);
+extern sint16 AHT_GetMacomFR_AngleOffset(void);
+
+extern sint16 AHT_GetMacomFC_DistanceFromRearCenter(void);
+extern sint16 AHT_GetMacomFC_SideOffset(void);
+extern sint16 AHT_GetMacomFC_AngleOffset(void);
+
+extern sint16 AHT_GetMacomFL_DistanceFromRearCenter(void);
+extern sint16 AHT_GetMacomFL_SideOffset(void);
+extern sint16 AHT_GetMacomFL_AngleOffset(void);
+
+extern sint16 AHT_GetMacomRC_DistanceFromRearCenter(void);
+extern sint16 AHT_GetMacomRC_SideOffset(void);
+extern sint16 AHT_GetMacomRC_AngleOffset(void);
+
+
+extern sint16 AHT_GetArs408FC_DistanceFromRearCenter(void);
+extern sint16 AHT_GetArs408FC_SideOffset(void);
+extern sint16 AHT_GetArs408FC_AngleOffset(void);
+
+/**
+ *
+ */
+extern sint16 AHT_GetTruckRearToFront(void);
+extern sint16 AHT_GetTruckWidthTireToTire(void);
+
+
+// ボディ(ベッセル)幅 [mm]
+extern sint16 AHT_GetBodyWidth(void);
+
+// Trajectory Dataに含まれるCourseAllowanceの標準値 [mm]
+extern sint16 AHT_GetCourseAllowanceNormal(void);
+
+//Trajectory Dataに含まれるCourseAllowanceの標準値(Narrow設定) [mm]
+extern sint16 AHT_GetCourseAllowanceNarrow(void);
+
+// Trajectory Dataに含まれるCourseAllowanceの標準値(Wide設定)  [mm]
+extern sint16 AHT_GetCourseAllowanceWide(void);
+
+#endif ///#ifndef __TRUCK_CONF_H_

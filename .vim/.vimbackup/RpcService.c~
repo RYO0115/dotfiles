@@ -1,0 +1,1812 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2005 Komatsu Ltd. All rights reserved.
+ * 
+ *  $RCSfile: SfRpcService.c,v $
+ * $Revision: 1.1.1.1 $
+ *   $Author: tojima $
+ *     $Date: 2005/07/06 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Rpc service
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+#include "ahscommon.h"
+#include "RpcService.h"
+#include "CanIDManager.h"
+#include "AhsTools.h"
+#include "SystemNvram.h"
+
+#include "AMKey.h"
+#include "ModeManager.h"
+#include "ModeLamp.h"
+#include "Headlight.h"
+#include "Engine.h"
+#include "EGStart.h"
+#include "EGStop.h"
+#include "Turnlight.h"
+#include "BrakeControl.h"
+#include "Horn.h"
+
+#include "ClippingAreaManager.h"
+#include "AppNvram.h"
+#include "SafetyCont.h"
+#include "Acc3Manager.h"
+#include "SpeedOrder.h"
+
+#include "MonSfCounter.h"
+#include "MonSfInOut.h"
+#include "TestCode.h"
+#include "ErrorManager.h"
+#include "WarningManager.h"
+
+#include "AccRangeMaint.h"
+#include "AccAngleMaint.h"
+#include "AccSensMaint.h"
+
+#include "ReleaseCheck.h"
+#include "SfInspection.h"
+#include "SelfVoltCheck.h"
+#include "OdsPower.h"
+#include "SfMask.h"
+#include "SfMaintenance.h"
+#include "CrMonitor.h"
+
+#include "Acc3Manager.h"
+#include "Bench.h"
+#include "ObstacleRecognition.h"
+#include "Mbi.h"
+
+#include "RpcManager.h"
+#include "MonCtrl.h"
+#include "MonSfNvram.h"
+
+#include "MacomManager.h"
+#include "VirtualTouchSensor.h"
+#include "SrrObstacleRecognition.h"
+#include "FurukawaObstacleRecognition.h"
+#include "Mmr1cManager.h"
+#include "Mmr1cPower.h"
+#include "SrrAngleCalib.h"
+#include "furukawaclipping.h"
+#include "SafetyZone.h"
+#include "AhsAuxDevice.h"
+
+#include "Identifier.h"
+#include "Thresholding.h"
+#include "SfTransferRpc.h"
+#include "AppIfdef.h"
+
+#include "TruckState.h"
+#include "VirtualBank.h"
+
+
+/**
+ *
+ */
+static void RpcService_SetRadarInstall(uint16 command);
+static void RpcService_SetSrrFunction(uint16 command);
+
+//---------------------------------------------------------------------------
+/** 
+ * @param :なし
+ * @retval:なし
+ * @brief :
+ */
+//---------------------------------------------------------------------------
+void Rpc_SafeSend0(const rpc_T* rpc)
+{
+}
+//---------------------------------------------------------------------------
+/** 
+ * @param :なし
+ * @retval:なし
+ * @brief :
+ */
+//---------------------------------------------------------------------------
+void Rpc_SafeSend1(const rpc_T* rpc)
+{
+    sint16  enableMonCan_A;
+
+    enableMonCan_A = Tools_GetPtrToShortS(&rpc->args[0]);
+    
+}
+//---------------------------------------------------------------------------
+/** 
+ * @param :なし
+ * @retval:なし
+ * @brief  リアセンサSafetyZone長さの変更
+ */
+//---------------------------------------------------------------------------
+void Rpc_SafeSend2(const rpc_T* rpc)
+{
+#ifdef __SAFE_UNDER_DEVELOPMENT__
+    uint16  length;
+
+    length = Tools_GetPtrToShortU(&rpc->args[0]);
+
+    SafetyZone_ChangeAreaLength(length);
+#endif
+}
+//---------------------------------------------------------------------------
+/** 
+ * @param :なし
+ * @retval:なし
+ * @brief :
+ */
+//---------------------------------------------------------------------------
+void Rpc_SafeSend3(const rpc_T* rpc)
+{
+    uint16  command;
+
+    command = Tools_2CharToShort(rpc->args[0],rpc->args[1]);
+
+    switch(command)
+    {
+/*
+        case 502:
+            //RevolvingPlanner_FilterON(TRUE);
+            break;
+        case 503:
+            //RevolvingPlanner_FilterON(FALSE);
+            break;
+
+        case 504:
+            //RevolvingPlanner_ChangeFilterConstant(0.4);
+            break;
+        case 505:
+            //RevolvingPlanner_ChangeFilterConstant(0.5);
+            break;
+        case 506:
+            //RevolvingPlanner_ChangeFilterConstant(0.6);
+            break;
+        case 507:
+            //RevolvingPlanner_ChangeFilterConstant(0.7);
+            break;
+        case 508:
+            //RevolvingPlanner_ChangeFilterConstant(0.8);
+            break;
+        case 509:
+            //RevolvingPlanner_ChangeFilterConstant(0.9);
+            break;
+
+        case 601:
+            //RevolvingPlanner_ChangeOutInterval(1);
+            break;
+        case 602:
+            //RevolvingPlanner_ChangeOutInterval(2);
+            break;
+        case 604:
+            //RevolvingPlanner_ChangeOutInterval(4);
+            break;
+        case 606:
+            //RevolvingPlanner_ChangeOutInterval(6);
+            break;
+        case 608:
+            //RevolvingPlanner_ChangeOutInterval(8);
+            break;
+        case 610:
+            //RevolvingPlanner_ChangeOutInterval(10);
+            break;
+        case 612:
+            //RevolvingPlanner_ChangeOutInterval(12);
+            break;
+        case 614:
+            //RevolvingPlanner_ChangeOutInterval(14);
+            break;
+        case 616:
+            //RevolvingPlanner_ChangeOutInterval(16);
+            break;
+        case 618:
+            //RevolvingPlanner_ChangeOutInterval(18);
+            break;
+        case 620:
+            //RevolvingPlanner_ChangeOutInterval(20);
+            break;
+*/            
+        default:
+            break;
+     }
+}
+//---------------------------------------------------------------------------
+/** 
+ * @param :なし
+ * @retval:なし
+ * @brief :KMENUでメンテナンスを実行する
+ */
+//---------------------------------------------------------------------------
+void Rpc_SafeSend4(const rpc_T* rpc)
+{
+ /* CGC 開発前のメンテナンスコマンドで使用していた */ 
+}
+//---------------------------------------------------------------------------
+/** 
+ * @param :なし
+ * @retval:なし
+ * @brief : 変数のPrintf表示
+ */
+//---------------------------------------------------------------------------
+void Rpc_SafeSend5(const rpc_T* rpc)
+{
+//#ifdef __SAFE_UNDER_DEVELOPMENT__
+    char    str[128];
+    uint16  command;
+
+    command = Tools_2CharToShort(rpc->args[0],rpc->args[1]);
+
+    switch(command)
+    {
+        case 1:
+            AMKey_ShowModuleInfo(); break;
+        case 2:
+            Mode_ShowInfo(); break;
+        case 3:
+            SelfVoltCheck_ShowInfo(); break;
+        case 4:
+            OdsPower_ShowInfo(); break;
+        case 5:
+            Mask_ShowMaskInfo(); break;
+        case 6:
+            ClippingArea_ShowInfo(); break;
+        case 7:
+            CrMonitor_ShowInfo(); break;
+        case 8:
+//            Ifm_ShowInfo(); break;
+        case 9:
+
+        case 10:
+            Turnlight_ShowInfo(); break;
+        case 11:
+            ModeLamp_ShowInfo(); break;
+        case 12:
+            Headlight_ShowInfo(); break;
+        case 13:
+            Horn_ShowInfo(); break;
+        case 14:
+            Bench_ShowInfo(); break;
+        case 15:
+            //RevolvingUnit_ShowInfo(); break;
+        case 16:
+            Mbi_ShowInfo(); break;
+        case 17:
+            EGStart_ShowInfo(); break;
+        case 18:
+            EGStop_ShowInfo(); break;
+        case 19:
+//            Vhms_ShowInfo(); break;
+        case 20:
+            Mmr1cPower_ShowInfo();break;
+        case 21:
+//            IfmEngineSpeed_ShowInfo(); break;
+        case 22:
+//            IfmFuelLevel_ShowInfo(); break;
+        case 23:
+//            IfmTruckSpeed_ShowInfo(); break;
+        case 24:
+            CanIDManager_ShowCanAConfig(); break;
+        case 74:
+            sprintf(str,"Lchoke:%d,Rchoke:%d",SfNvram_GetLeftChokeExist(),SfNvram_GetRightChokeExist());
+            CanDebugPrintf(str);
+            break;
+        
+        case 100:
+            Acc3Manager_AskRadarSerialNo(posRight);
+            break;
+        case 101:
+            Acc3Manager_AskRadarSerialNo(posCenter);
+            break;
+        case 102:
+            Acc3Manager_AskRadarSerialNo(posLeft);
+            break;
+        case 103:
+            Acc3Manager_AskRadarSerialNo(posSteer);
+            break;
+        case 110:
+            Bank_ShowInfo();
+            break;
+        default:
+            break;
+    }
+//#endif
+}
+//---------------------------------------------------------------------------
+/** 
+ * @param  なし
+ * @retval なし
+ * @brief テスト用コマンド、エラー無視など
+ */
+//---------------------------------------------------------------------------
+void Rpc_SafeSend6(const rpc_T* rpc)
+{
+#ifdef __SAFE_UNDER_DEVELOPMENT__
+    uint16  command;
+
+    command = Tools_2CharToShort(rpc->args[0],rpc->args[1]);
+
+    switch(command)
+    {
+        case 0:
+            // 全てのODSを無視
+            Acc3Manager_RadarDisable();
+            Mmr1cManager_Disable();
+            Ars408Manager_Disable();
+            MacomManager_SetValidFlag(FALSE); 
+            break;
+
+        case 1:
+            // ODS検知機能を元に戻す
+            Acc3Manager_RadarEnable();
+            Mmr1cManager_Enable();
+            MacomManager_SetValidFlag(FALSE);
+            break;
+
+        // ACC3
+        case 10:
+            // ACC3をDisable
+            Acc3Manager_RadarDisable();
+            break;
+
+        case 11:
+            // ACC3をenable
+            Acc3Manager_RadarEnable();
+            break;
+
+        case 20:
+            ObstRecog_DisableRecognition(TRUE);  // ACC3によるODS無視
+            break;
+
+        case 21:
+            ObstRecog_DisableRecognition(FALSE); // ACC3によるODS通常
+            break;
+
+        // MACOM関連
+        case 30:
+            MacomManager_SetValidFlag(FALSE);     // MACOMレーダを無視
+            break;
+
+        case 31:
+            MacomManager_SetValidFlag(TRUE);     // 
+            break;
+
+        case 32:
+            VirtualTouchSensor_Disable();
+            break;
+
+        case 33:
+            VirtualTouchSensor_Enable();
+            break;
+
+        case 34:
+            SrrObstRecog_Disable();               // MACOMによるショートレンジODS機能無視
+            break;
+
+        case 35:
+            SrrObstRecog_Enable();
+            break;
+
+        // FURUKAWA関連
+        case 40:
+            Mmr1cManager_Disable();           // MMR1Cなし
+            FurukawaObstRecog_Disable();        // 
+            break;
+
+        case 41:
+            Mmr1cManager_Enable();
+            FurukawaObstRecog_Enable();
+            break;
+
+        case 42:
+            Mmr1cManager_DiagnosisEnable();   // 故障診断あり（通常）
+            break;
+
+        case 43:
+            Mmr1cManager_DiagnosisDisable();  // 故障診断なし（テスト用）
+            break;
+
+        case 44:
+            FurukawaObstRecog_Disable();        // MMR1Cはあるが、MMR1CによるODSがなし
+            break;
+
+        case 45:
+            FurukawaObstRecog_Enable();
+            break;
+
+        // 回転機構
+        case 50:
+            //RevolvingUnit_DisableDiagnosis(TRUE);
+            break;
+
+        case 51:
+            //RevolvingUnit_DisableDiagnosis(FALSE);
+            break;
+            
+        // コーションランプ
+        case 60:
+//            CautionIndicator_CheckDisable();
+            break;
+            
+        case 61:
+//            CautionIndicator_CheckEnable();
+            break;
+
+        case 100:
+            SafetyCont_ResetController();   // 安全コン自爆コマンド
+            break;
+
+		case 101:
+			break;
+
+		case 102:
+			break;
+
+        default:
+            break;
+    }
+#endif
+}
+//---------------------------------------------------------------------------
+/** 
+ * @brief モータ回転 
+ */
+//---------------------------------------------------------------------------
+void Rpc_SafeSend7(const rpc_T* rpc)
+{
+//#ifdef __SAFE_UNDER_DEVELOPMENT__
+    uint16  arg;
+
+    // 0 - 180degで指定
+    arg = Tools_2CharToShort(rpc->args[0],rpc->args[1]);
+    if( (arg >= 0) && (arg <= 180) )
+    {
+        //RevolvingUnit_SetTargetAngleDeg(arg-90);
+    }
+    else if( arg == 1000 )
+    {
+        //RevolvingPlanner_StartMotorTest(TRUE);
+    }
+    else if( arg == 1001 )
+    {
+        //RevolvingPlanner_StartMotorTest(FALSE);
+    }
+    else 
+    {
+        // do nothing
+    }
+//#endif
+}
+//---------------------------------------------------------------------------
+/** 
+ * @param 
+ * @retval
+ * @brief  速度制限
+ */
+//---------------------------------------------------------------------------
+void Rpc_SafeSend8(const rpc_T* rpc)
+{
+#ifdef __SAFE_UNDER_DEVELOPMENT__
+    sint16  speed;
+
+    speed = Tools_GetPtrToShortS(&rpc->args[0]);
+
+    SpeedOrder_SetDebugSpeed(speed);
+#endif
+}
+//---------------------------------------------------------------------------
+/** 
+ * @param  なし
+ * @retval なし
+ * @brief  NVRAM関係
+ */
+//---------------------------------------------------------------------------
+void Rpc_SafeSend9(const rpc_T* rpc)
+{
+    uint16  command;
+    sint16  offset,ch;
+    sint8   buf[2];
+    uint8   dest;
+    ModeType mode;
+
+    command = Tools_2CharToShort(rpc->args[0],rpc->args[1]);
+
+    mode = Mode_GetCurrentMode();
+
+    if( mode == modeMaintenance )
+    {
+        // ODS基本閾値
+        if( command == 10 )
+        {
+            SfNvram_SetDefaultThreshold((sint16)maskRegular);
+            Thresholding_Init();
+        }
+        else if( command == 11 )
+        {
+            SfNvram_SetDefaultThreshold((sint16)maskAcc3MediumSensitivity);
+            Thresholding_Init();
+        }
+        else if( command == 12 )
+        {
+            SfNvram_SetDefaultThreshold((sint16)maskAcc3Low1Sensitivity);
+            Thresholding_Init();
+        }
+        else if( command == 13 )
+        {
+            SfNvram_SetDefaultThreshold((sint16)maskAcc3Low2Sensitivity);
+            Thresholding_Init();
+        }
+        else if( command == 14 )
+        {
+            SfNvram_SetDefaultThreshold((sint16)maskAcc3Low3Sensitivity);
+            Thresholding_Init();
+        }
+        else if( command == 15 )
+        {
+            SfNvram_SetDefaultThreshold((sint16)maskAcc3Disable);
+            Thresholding_Init();
+        }
+
+        // ACC3距離補正を元に戻す
+        else if( command == 50 )
+        {
+            SfNvram_SetRadarRangeCoefficient( posRight,  10000 );  
+            SfNvram_SetRadarRangeCoefficient( posCenter, 10000 );  
+            SfNvram_SetRadarRangeCoefficient( posLeft,   10000 );  
+            SfNvram_SetRadarRangeCoefficient( posSteer,  10000 );  
+        }
+
+        // マスクセントラルありなし
+        else if( command == 51 )
+        {
+            SfNvram_SetMaskCentralFlag(ON);
+        }
+        else if( command == 52 )
+        {
+            SfNvram_SetMaskCentralFlag(OFF);
+        }
+
+        // 消火器ありなし
+        else if( command == 53 )
+        {
+            SfNvram_SetFireExtinguisherExist(ON);  // あり  
+        }
+        else if( command == 54 )
+        {
+            SfNvram_SetFireExtinguisherExist(OFF);  // なし
+        }
+        
+        // Clipping area extend
+        else if( command == 61 )
+        {
+            SfNvram_SetClipAreaExtend(ON);  // あり  
+        }
+        else if( command == 62 )
+        {
+            SfNvram_SetClipAreaExtend(OFF);  // なし
+        }
+
+        // 
+        else if( command == 65 )  // Ver1.2をVer2.0(ahs2)にしたときの変更
+        {
+            // Truck Type 930E
+            AppNvram_SetTruckType(140);
+
+            // clipAreaExtend
+            SfNvram_SetClipAreaExtend(ON);
+
+            // clippingAreaWidth
+            SfNvram_SetClippingAllowance(0);
+
+            // MMR1C
+            SfNvram_SetMmr1cInstalled(posMmr1cRight,OFF);
+            SfNvram_SetMmr1cInstalled(posMmr1cLeft, OFF);
+
+            SfNvram_SetMmr1cOffset(posMmr1cRight,0);
+            SfNvram_SetMmr1cOffset(posMmr1cLeft, 0);
+
+            // MACOM
+            SfNvram_SetSrrInstalled(posSrrRight, OFF);
+            SfNvram_SetSrrInstalled(posSrrCenter,OFF);
+            SfNvram_SetSrrInstalled(posSrrLeft,  OFF);
+            SfNvram_SetSrrInstalled(posSrrRear,  OFF);
+
+            SfNvram_SetSrrOffset(posSrrRight, 0);
+            SfNvram_SetSrrOffset(posSrrCenter,0);
+            SfNvram_SetSrrOffset(posSrrLeft,  0);
+            SfNvram_SetSrrOffset(posSrrRear,  0);
+            
+            // Rear free zone
+            AppNvram_SetRearFreeZoneWidth(6000);
+            AppNvram_SetRearFreeZoneLengh(3000);
+        }
+
+        // エラー履歴クリア
+        else if( command == 80 )
+        {   
+            SfNvram_ClearErrorHistory();
+        }
+
+        // Radarインストール
+        else if( (100 <= command)  && (command <= 120) )
+        {
+            RpcService_SetRadarInstall(command);
+        }
+        
+        else if( (200 <= command)  && (command <= 220) )
+        {
+            RpcService_SetSrrFunction(command);
+        }
+
+        // ACC3オフセット角
+        else if( (25000 <= command) && (command < 35000) )
+        {
+            offset = (10 * (command / 10)) - 30000;
+            ch     = command - (10 * (command / 10));
+            Acc3Manager_ChangeScanOffset( (RadarPosition)ch, offset, TRUE );
+        }
+        else if( command == 35000 )  // すべてデフォルトに戻す
+        {
+            SfNvram_SetRadarOffset( posRight,  30000 );  
+            SfNvram_SetRadarOffset( posCenter, 30000 );  
+            SfNvram_SetRadarOffset( posLeft,   30000 );  
+            SfNvram_SetRadarOffset( posSteer,  30000 );  
+        }
+
+        //クリッピングエリア幅の変更
+        else if( command == 40000 ){
+            SfNvram_SetClippingAllowance(0);
+        }
+        else if( command == 40001 ){
+            SfNvram_SetClippingAllowance(5500);
+        }
+        else if( command == 40002 ){
+            SfNvram_SetClippingAllowance(4500);
+        }
+        //ターゲット検知距離閾値の変更
+        else if( command == 50000 ){
+            SfNvram_SetTargetRangeThreshold(40);
+        }
+        else if( command == 50001 ){
+            SfNvram_SetTargetRangeThreshold(50);
+        }
+        else if( command == 50002 ){
+            SfNvram_SetTargetRangeThreshold(60);
+        }
+        else if( command == 50003 ){
+            SfNvram_SetTargetRangeThreshold(120);
+        }
+
+        // NVRAMをすべて初期値に戻す
+        else if( command == 60000 )
+        {
+            SfNvram_BecomeVirgin();
+            AppNvram_SetInitData();
+        }
+        //デフォルトの反射強度閾値の変更
+        else if( (0 <= command) && (command <= 5) )
+        {
+			if( (AppNvram_GetOdsType()==ESRX3_MMR1CX2_SRRX4)||(AppNvram_GetOdsType()==ESRX3_MMR1CX2) )
+			{
+				SfNvram_SetRadarPowerThreshold(command);
+				Thresholding_Init();
+			}
+			else if( command <= 3 )
+			{
+				SfNvram_SetRadarPowerThreshold(command);
+				Thresholding_Init();
+			}
+			else
+			{
+				//
+			}
+        }
+        else
+        {
+			//
+		}
+    }
+
+    //FlightRecorderへ変更NVRAMデータを送信する
+    dest = MBI_A;
+    buf[0] = 0;
+    buf[1] = 0;
+    MonSfNvram_ReceiveSendReq(dest, (uint8*)&buf[0]);
+
+}
+//---------------------------------------------------------------------------
+/** 
+ * @param :なし
+ * @retval:なし
+ * @brief :Safetyコン機能チェック用(NVRAMを書き換えないもの）
+ */
+//---------------------------------------------------------------------------
+void Rpc_SafeSendA(const rpc_T* rpc)
+{
+    uint16  command;
+    uint8   argc;
+
+    command = Tools_2CharToShort(rpc->args[0],rpc->args[1]);
+
+    switch(command)
+    {
+        case 1:
+            AMKey_ShowModuleInfo();
+            break;
+        case 2:
+            Mode_ShowInfo();
+            break;
+        case 3:
+            ModeLamp_On(clYellow,T_5SEC);
+            break;
+        case 4:
+            ModeLamp_On(clGreen,T_5SEC);
+            break;
+        case 5:
+            ModeLamp_On(clRed,T_5SEC);
+            break;
+        case 6:
+            ModeLamp_On(clRed,T_10SEC);
+            break;
+        case 7:
+            Headlight_On();
+            break;
+        case 8:
+            Headlight_Off();
+            break;
+        case 9:
+            Headlight_Flash();
+            break;
+        case 10:
+            Engine_Stop();
+            break;
+        case 11:
+            Turnlight_On(tlRight);
+            break;
+        case 12:
+            Turnlight_On(tlLeft);
+            break;
+        case 13:
+            Turnlight_On(tlBoth);
+            break;
+        case 14:
+            Turnlight_Off(tlBoth);
+            break;
+        case 15:
+            Turnlight_Flash(tlBoth);
+            break;
+        case 16:
+            BrakeControl_ParkingOnByInspection();
+            break;
+        case 18:
+            BrakeControl_EmergencyStop();
+            break;
+        case 20:
+            Horn_Honk(hornWarning);
+            break;
+        case 21:
+            Horn_Honk(hornMoveForword);
+            break;
+        case 22:
+            Horn_Honk(hornMoveReverse);
+            break;
+        case 24:
+            EGStart_Off();
+            break;
+        case 25:
+            ParkingBrake_SetWorking();
+            break;
+
+        case 27:
+            Mmr1cPower_On();
+            break;
+        case 28:
+            Mmr1cPower_Off();
+            break;
+        case 29:
+            Mmr1cPower_Cycle();
+            break;
+
+        // mode
+        case 31:
+            Mode_ReceiveGoSuspendRpc(rpc);
+            break;
+        case 33:
+            Mode_ReceiveGoSecureRpc(rpc);
+            break;
+        case 34:
+            //Motor_CorrectPosition();
+            break;
+        
+        case 50:
+            //Motor_RestoreAoutCondition();
+            break;
+
+        // Moter
+        case 70:
+            //RevolvingUnit_StartInitializePot();
+            break;
+        case 71:
+            //Motor_StartControl();
+            break;
+        case 72:
+            //Motor_StopControl();
+            break;
+
+        // ODS
+        case 97:
+            ClippingArea_SetDummyZone(zoneInspection);
+            break;
+        case 98:
+            ClippingArea_SetDummyZone(zoneCalibration);
+            break;
+        case 99:
+            ClippingArea_SetDummyZone(zoneRangeCalibration);
+            break;
+
+        case 100:
+            ClippingArea_SetDummyZone(zoneTest);
+            //RevolvingUnit_SetTargetAngleDeg(0);
+            //Acc3Manager_RadiateScanningStart();
+            break;
+        case 101:
+            ClippingArea_SetDummyZone(zoneNone);
+            //Acc3Manager_RadiateScanningStop();
+            break;
+        case 102:
+            ClippingArea_SetDummyZone(zoneTest2);
+            //RevolvingUnit_SetTargetAngleDeg(0);
+            //Acc3Manager_RadiateScanningStart();
+            break;
+        case 103:
+            ClippingArea_UseRearArea(TRUE);
+            break;
+        case 104:
+            ClippingArea_UseRearArea(FALSE);
+            break;
+        case 105:
+            ClippingArea_SetDummyZone(zoneTest3);
+            //RevolvingUnit_SetTargetAngleDeg(0);
+            //Acc3Manager_RadiateScanningStart();
+            break;
+        case 106:
+            ClippingArea_SetDummyZone(zoneTest4);
+//            RevolvingUnit_SetTargetAngleDeg(0);
+//            Acc3Manager_RadiateScanningStart();
+            break;
+
+        case 107:
+            ClippingArea_SetDummyZone(zoneTestRear);
+            break;
+
+        case 108:
+            ClippingArea_SetDummyZone(zoneTestRear2);
+            break;
+
+        case 109:
+            ClippingArea_SetDummyZone(zoneCalibration);
+            break;
+
+        case 110:
+            ClippingArea_SetDummyZone(zoneSrrInspection);
+            break;
+
+        case 111:
+            OdsPower_Cycle();
+            break;
+        case 112:
+            ClippingArea_SetDummyZone(zoneSrrCalibration);
+            break;
+        case 113:
+            ClippingArea_SetDummyZone(zoneMmr1cCalibration);
+            break;
+
+        case 114:
+            ClippingArea_SetDummyZone(zoneRearInspection);
+            break;
+        case 115:
+            Acc3Manager_SetDataTypeBit(0);   // filtered data
+            break;
+        case 116:
+            Acc3Manager_SetDataTypeBit(1);   // unfiltered data
+            break;
+        case 117:
+            Acc3Manager_SetShortRangeBit(ON);   // 全てShort range mode(default)
+            break;
+        case 118:
+            Acc3Manager_SetShortRangeBit(OFF);   // 全てLong range mode
+            break;
+        case 119:
+            Acc3Manager_SetShortRangeBitSteer();   // Steer以外をLongRangeにする
+            break;
+
+        case 130:
+            argc = ON;
+            break;
+            
+        case 131:
+            argc = OFF;
+            break;
+
+        case 140:
+			Mmr1cManager_SetDebugFlag(TRUE);
+			break;
+
+		case 141:
+			Mmr1cManager_SetDebugFlag(FALSE);
+			break;
+
+		case 142:
+			//Mmr1cManager_SaveMmr1cConfig(posMmr1cRight);
+			break;
+
+		case 143:
+			//Mmr1cManager_SaveMmr1cConfig(posMmr1cLeft);
+			break;
+
+		case 150:
+			MacomManager_SetDebugFlag(TRUE);
+            break;
+
+        case 151:
+            MacomManager_SetDebugFlag(FALSE);
+            break;
+
+        case 160:
+            FurukawaClip_ChangeSendInterval(T_1SEC);
+            break;
+        case 162:
+            FurukawaClip_ChangeSendInterval(T_200MSEC);
+            break;
+        case 163:
+            FurukawaClip_ChangeSendInterval(T_500MSEC);
+            break;
+
+        case 200:
+            TestCode_DisplayNumber();
+            break;
+        case 201:
+            TestCode_EnableSetNumber();
+            break;
+
+        case 300:
+            SystemNvram_ShowInfo();
+            break;
+
+        // Release Check
+        case 305:
+            ReleaseCheck_ReceiveMsg(rpc);
+            break;
+            
+        case 306:
+            rpc->args[0] = 30;  // caution lamp
+            rpc->args[1] = 1;
+            Inspection_ReceiveCommand(rpc);
+            break;
+            
+        case 307:
+            rpc->args[0] = 30;
+            rpc->args[1] = 0;
+            Inspection_ReceiveCommand(rpc);
+            break;
+
+        case 400:
+            ClippingArea_SetMergin(0);
+            break;
+        case 401:
+            ClippingArea_SetMergin(10);
+            break;
+        case 402:
+            ClippingArea_SetMergin(20);
+            break;
+        case 403:
+            ClippingArea_SetMergin(30);
+            break;
+        case 404:
+            ClippingArea_SetMergin(40);
+            break;
+        case 405:
+            ClippingArea_SetMergin(50);
+            break;
+
+        case 500:
+            VirtualTouchSensor_SetTestFlag(OFF);
+            break;
+        case 501:
+            VirtualTouchSensor_SetTestFlag(ON);
+            break;
+            
+        case 1001:
+            SfNvram_ShowInfo();
+            break;
+        case 1002:
+            RpcManager_ShowCanInfo();
+            break;
+        default:
+            break;
+    }
+}
+//---------------------------------------------------------------------------
+/** 
+ * @param :なし
+ * @retval:なし
+ * @brief :
+ */
+//---------------------------------------------------------------------------
+void Rpc_SafeSendB(const rpc_T* rpc)
+{
+#ifdef __SAFE_UNDER_DEVELOPMENT__
+    uint16  command;
+    uint8   argc;
+
+    struct {
+        uint8   id;          /* ID: 0:Heartbeat   1:PLM3   2:InterfaceModule (IDの7bit目を1にすると出力停止指令になる) */
+        uint8   interval;    /* 100msec */
+    } mbi_interval;
+
+    command = Tools_2CharToShort(rpc->args[0],rpc->args[1]);
+
+    switch(command)
+    {
+        case 1:
+            AMKey_ShowModuleInfo();
+            break;
+        case 2:
+            Mode_ShowInfo();
+            break;
+        case 3:
+            ModeLamp_On(clYellow,T_5SEC);
+            break;
+        case 4:
+            ModeLamp_On(clGreen,T_5SEC);
+            break;
+        case 5:
+            ModeLamp_On(clRed,T_5SEC);
+            break;
+        case 6:
+            ModeLamp_On(clRed,T_10SEC);
+            break;
+        case 7:
+            Headlight_On();
+            break;
+        case 8:
+            Headlight_Off();
+            break;
+        case 9:
+            Headlight_Flash();
+            break;
+        case 10:
+            EGStop_On();
+            break;
+        case 11:
+            Turnlight_On(tlRight);
+            break;
+        case 12:
+            Turnlight_On(tlLeft);
+            break;
+        case 13:
+            Turnlight_On(tlBoth);
+            break;
+        case 14:
+            Turnlight_Off(tlBoth);
+            break;
+        case 15:
+            Turnlight_Flash(tlBoth);
+            break;
+        case 16:
+            BrakeControl_ParkingOnByInspection();
+            break;
+        case 17:
+            BrakeControl_ParkingOffByInspection();
+            break;
+        case 18:
+            BrakeControl_EmergencyStop();
+            break;
+        case 19:
+            BrakeControl_Release();
+            break;
+        case 20:
+            Horn_Honk(hornWarning);
+            break;
+        case 21:
+            Horn_Honk(hornMoveForword);
+            break;
+        case 22:
+            Horn_Honk(hornMoveReverse);
+            break;
+        case 23:
+            EGStart_On();
+            break;
+        case 24:
+            EGStart_Off();
+            break;
+        case 25:
+            ParkingBrake_SetWorking();
+            break;
+        case 26:
+            ParkingBrake_SetRelease();
+            break;
+
+        case 27:
+            Mmr1cPower_On();
+            break;
+        case 28:
+            Mmr1cPower_Off();
+            break;
+        case 29:
+            Mmr1cPower_Cycle();
+            break;
+
+        // mode
+        case 30:
+            Mode_ReceiveGoAutoRpc(rpc);
+            break;
+        case 31:
+            Mode_ReceiveGoSuspendRpc(rpc);
+            break;
+        case 32:
+            Mode_ReceiveErrorResetRpc(rpc);
+            break;
+        case 33:
+            Mode_ReceiveGoSecureRpc(rpc);
+            break;
+        case 34:
+            //Motor_CorrectPosition();
+            break;
+        
+        case 50:
+            //Motor_RestoreAoutCondition();
+            break;
+
+        // Moter
+        case 70:
+            //RevolvingUnit_StartInitializePot();
+            break;
+        case 71:
+            //Motor_StartControl();
+            break;
+        case 72:
+            //Motor_StopControl();
+            break;
+
+        // ODS
+        case 97:
+            ClippingArea_SetDummyZone(zoneInspection);
+            break;
+        case 98:
+            ClippingArea_SetDummyZone(zoneCalibration);
+            break;
+        case 99:
+            ClippingArea_SetDummyZone(zoneRangeCalibration);
+            break;
+
+        case 100:
+            ClippingArea_SetDummyZone(zoneTest);
+            //RevolvingUnit_SetTargetAngleDeg(0);
+            Acc3Manager_RadiateScanningStart();
+            break;
+        case 101:
+            ClippingArea_SetDummyZone(zoneNone);
+            Acc3Manager_RadiateScanningStop();
+            break;
+        case 102:
+            ClippingArea_SetDummyZone(zoneTest2);
+            //RevolvingUnit_SetTargetAngleDeg(0);
+            Acc3Manager_RadiateScanningStart();
+            break;
+        case 103:
+            ClippingArea_UseRearArea(TRUE);
+            break;
+        case 104:
+            ClippingArea_UseRearArea(FALSE);
+            break;
+        case 105:
+            ClippingArea_SetDummyZone(zoneTest3);
+            //RevolvingUnit_SetTargetAngleDeg(0);
+            Acc3Manager_RadiateScanningStart();
+            break;
+        case 106:
+            ClippingArea_SetDummyZone(zoneTest4);
+//            RevolvingUnit_SetTargetAngleDeg(0);
+//            Acc3Manager_RadiateScanningStart();
+            break;
+
+        case 107:
+            ClippingArea_SetDummyZone(zoneTestRear);
+            break;
+
+        case 108:
+            ClippingArea_SetDummyZone(zoneTestRear2);
+            break;
+
+        case 109:
+            ClippingArea_SetDummyZone(zoneCalibration);
+            break;
+
+        case 110:
+            ClippingArea_SetDummyZone(zoneSrrInspection);
+            break;
+
+        case 111:
+            OdsPower_Cycle();
+            break;
+        case 112:
+            ClippingArea_SetDummyZone(zoneSrrCalibration);
+            break;
+        case 113:
+            ClippingArea_SetDummyZone(zoneMmr1cCalibration);
+            break;
+
+        case 114:
+            ClippingArea_SetDummyZone(zoneRearInspection);
+            break;
+        case 115:
+            Acc3Manager_SetDataTypeBit(0);   // filtered data
+            break;
+        case 116:
+            Acc3Manager_SetDataTypeBit(1);   // unfiltered data
+            break;
+        case 117:
+            Acc3Manager_SetShortRangeBit(ON);   // 全てShort range mode(default)
+            break;
+        case 118:
+            Acc3Manager_SetShortRangeBit(OFF);   // 全てLong range mode
+            break;
+        case 119:
+            Acc3Manager_SetShortRangeBitSteer();   // Steer以外をLongRangeにする
+            break;
+
+        // Error/Warning
+        case 120:
+//            Error_Set(E_SAFETY_ERROR_TEST);
+            Error_Set(E_DETECT_MMR1C);
+            break;
+        case 121:
+//            Warning_Set(E_SAFETY_ERROR_TEST);
+            Warning_Set(E_DETECT_MMR1C);
+            break;
+        case 122:
+            Warning_SetEx(E_SAFETY_ERROR_TEST,wSlow10);
+            break;
+        case 123:
+            Warning_SetEx(E_SAFETY_ERROR_TEST,wSlow30);
+            break;
+        case 124:
+            Warning_SetEx(E_SAFETY_ERROR_TEST,wSlow10Now);
+            break;
+        case 125:
+            Warning_Clear(E_SAFETY_ERROR_TEST);
+            break;
+        case 126:
+            Error_Set(E_DRIVE_DEAD);
+            break;
+        case 127:
+            Error_Set(E_SAFETY_ERROR_TEST2);
+            break;
+
+        case 130:
+            argc = ON;
+            break;
+            
+        case 131:
+            argc = OFF;
+            break;
+
+        case 140:
+            Mmr1cManager_SetDebugFlag(TRUE);
+            break;
+
+        case 141:
+            Mmr1cManager_SetDebugFlag(FALSE);
+            break;
+
+        case 142:
+			//Mmr1cManager_SaveMmr1cConfig(posMmr1cRight);
+			break;
+
+		case 143:
+            //Mmr1cManager_SaveMmr1cConfig(posMmr1cLeft);
+            break;
+
+        case 150:
+            MacomManager_SetDebugFlag(TRUE);
+            break;
+
+        case 151:
+            MacomManager_SetDebugFlag(FALSE);
+            break;
+
+        case 160:
+            FurukawaClip_ChangeSendInterval(T_1SEC);
+            break;
+        case 162:
+            FurukawaClip_ChangeSendInterval(T_200MSEC);
+            break;
+        case 163:
+            FurukawaClip_ChangeSendInterval(T_500MSEC);
+            break;
+
+        case 200:
+            TestCode_DisplayNumber();
+            break;
+        case 201:
+            TestCode_EnableSetNumber();
+            break;
+
+        // Maintenance
+        case 300:
+            AccSensitivityMaint_Reset();
+            break;
+        case 301:
+            AccAngleMaint_Reset();
+            break;
+        case 302:
+            AccRangeMaint_Reset();
+            break;
+        case 303:
+            //MotorMaint_Reset();
+            break;
+
+        // Release Check
+        case 305:
+            ReleaseCheck_ReceiveMsg(rpc);
+            break;
+        case 306:
+            rpc->args[0] = 30;  // caution lamp
+            rpc->args[1] = 1;
+            Inspection_ReceiveCommand(rpc);
+            break;
+        case 307:
+            rpc->args[0] = 30;
+            rpc->args[1] = 0;
+            Inspection_ReceiveCommand(rpc);
+            break;
+
+        case 400:
+            ClippingArea_SetMergin(0);
+            break;
+        case 401:
+            ClippingArea_SetMergin(10);
+            break;
+        case 402:
+            ClippingArea_SetMergin(20);
+            break;
+        case 403:
+            ClippingArea_SetMergin(30);
+            break;
+        case 404:
+            ClippingArea_SetMergin(40);
+            break;
+        case 405:
+            ClippingArea_SetMergin(50);
+            break;
+
+        case 500:
+            VirtualTouchSensor_SetTestFlag(OFF);
+            break;
+        case 501:
+            VirtualTouchSensor_SetTestFlag(ON);
+            break;
+
+        case 600:
+            SfNvram_SetSfAuxDevice(1,4);
+            break;
+
+        case 1000:
+            SfNvram_BecomeVirgin();
+            break;
+        case 1001:
+            SfNvram_ShowInfo();
+            break;
+        case 1002:
+            RpcManager_ShowCanInfo();
+            break;
+        case 2000:
+//            Ifm_ChangeRealTimeDataInterval(2);//realTimeDataを200msecで送信させる
+            break;
+        case 3000:
+
+            mbi_interval.id = 0x08;  // PLMStatus
+            mbi_interval.interval = 20;
+
+            RpcManager_SendMsg( CAN_A,
+                                CHANGE_MBI_INTERVAL,
+                                MBI_A,
+                                PRIOR_MBI,
+                                2,
+                                (uint8*)&mbi_interval);
+                                
+            RpcManager_SendMsg( CAN_B,
+                                CHANGE_MBI_INTERVAL,
+                                MBI_A,
+                                PRIOR_MBI,
+                                2,
+                                (uint8*)&mbi_interval);
+            break;
+        default:
+            break;
+    }
+#endif    
+/*
+#ifdef __SAFE_UNDER_DEVELOPMENT__
+    uint16 command;
+    
+    command = Tools_2CharToShort(rpc->args[0],rpc->args[1]);
+    
+    switch(command)
+    {
+        case 0:
+            SrrAngleCalib_SetNewOffsetAngle(posSrrCenter,0);
+            break;
+        case 1:
+            SrrAngleCalib_SetNewOffsetAngle(posSrrCenter,182);
+            break;
+        case 2:
+            SrrAngleCalib_SetNewOffsetAngle(posSrrCenter,364);
+            break;
+        case 3:
+            SrrAngleCalib_SetNewOffsetAngle(posSrrCenter,910);
+            break;
+        case 4:
+            SrrAngleCalib_SetNewOffsetAngle(posSrrCenter,1820);
+            break;
+        default:
+            break;
+    }
+#endif
+*/
+}
+
+//---------------------------------------------------------------------------
+/** 
+ * @param 
+ * @retval
+ */
+//---------------------------------------------------------------------------
+void Rpc_SafeSendC(const rpc_T* rpc)
+{
+    //
+}
+
+//---------------------------------------------------------------------------
+/** 
+ * @param 
+ * @retval
+ */
+//---------------------------------------------------------------------------
+void Rpc_SafeSendD(const rpc_T* rpc)
+{
+	//
+}
+
+//---------------------------------------------------------------------------
+/** 
+ * @param 
+ * @retval
+ */
+//---------------------------------------------------------------------------
+void Rpc_SafeSendE(const rpc_T* rpc)
+{
+	//
+}
+
+//---------------------------------------------------------------------------
+/** 
+ * @param :なし
+ * @retval:なし
+ * @brief : NVRAM値の直接変更
+ */
+//---------------------------------------------------------------------------
+void Rpc_SafeSendF(const rpc_T* rpc)
+{
+    sint16 item, value;
+    uint8  source;
+    ModeType mode;
+    
+    item  = Tools_2CharToShort(rpc->args[0],rpc->args[1]);
+    value = Tools_2CharToShort(rpc->args[2],rpc->args[3]);
+
+    source  = rpc->dst;         // 送信元のアドレス
+    
+    mode = Mode_GetCurrentMode();
+
+    if( mode == modeMaintenance )
+    {
+        if( (source==PCTOOL) || (source==PCTOOL2) || (source==CanIDManager_GetRouterCanID()) )
+        {
+            SfNvram_ChangeNvramFromLaptop((EnumNvramItem)item,value);
+        }
+        else
+        {
+            //
+        }
+    }
+    else
+    {
+        // 変更許可しない
+    }
+}
+
+//---------------------------------------------------------------------------
+/** 
+ * @param 
+ * @retval
+ * @brief  NV-RAM 初期化
+ */
+//---------------------------------------------------------------------------
+void Rpc_NV_RAM_CLEAR(const rpc_T* rpc)
+{
+    uint16  command;
+    bool identifierInput1;
+    bool identifierInput2;
+    
+    command = Tools_2CharToShort(rpc->args[0],rpc->args[1]);
+    
+    identifierInput1 = GetDinStatus(IDENTIFIER1);
+    identifierInput2 = GetDinStatus(IDENTIFIER2);
+    
+    if( command == 1000 )
+    {
+        // Nvramクリアは製造時のみ受け付けようにするため、identifier入力をチェック
+        if( ( identifierInput1 == OFF ) && (identifierInput2 == OFF) )
+        {
+            SfNvram_BecomeVirgin();
+            AppNvram_SetInitData();
+        }
+    }
+}
+
+//---------------------------------------------------------------------------
+/** テスト用RPC受信関数
+ * @param
+ * @retval
+ * @brief 
+ */
+//---------------------------------------------------------------------------
+void Rpc_ReceiveDefaultRpc(const rpc_T* rpc)
+{
+#ifdef _DEBUG_AHSRPC
+    char   str1[128],str2[8];
+    uint8  source;
+    uint8  prior;
+    int len,i;
+
+    source  = rpc->dst;         // 送信元のアドレス
+    prior   = rpc->pri;         // プライオリティ
+
+    CanDebugPrintf("RPC Receive");
+    sprintf(str1,"<source> :%x",source); CanDebugPrintf(str1);
+    sprintf(str1,"<prior>  :%d",prior);  CanDebugPrintf(str1);
+
+    len = rpc->arglen;
+    if(len > 20)len = 20;
+
+    sprintf(str1,"<arg>   :");
+    for( i=0; i<len; i++ )
+    {
+        sprintf(str2,"%x ",rpc->args[i]);
+        strcat(str1,str2);
+    }
+    CanDebugPrintf(str1);
+
+#endif ///#ifdef _DEBUG_AHSRPC
+}
+
+/**
+ */
+//---------------------------------------------------------------------------
+/**
+ * @return : Printfデバッグで使うCANチャンネル
+ */
+//---------------------------------------------------------------------------
+uint8 RpcService_GetPrintfCanCh(void)
+{
+    return(CAN_B);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * @return : モニパソのCANID
+ */
+//---------------------------------------------------------------------------
+uint8 RpcService_GetPcAddress(void)
+{
+    return(PCTOOL);
+   // return(PCTOOL2);
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+static void RpcService_SetRadarInstall(uint16 command)
+{
+    if( command == 100 )     { SfNvram_SetAcc3Installed(posRight,ON);  }
+    else if( command == 101 ){ SfNvram_SetAcc3Installed(posCenter,ON); }
+    else if( command == 102 ){ SfNvram_SetAcc3Installed(posLeft,ON);   }
+    else if( command == 103 ){ SfNvram_SetAcc3Installed(posSteer,ON);  }
+
+    else if( command == 104 ){ SfNvram_SetMmr1cInstalled(posMmr1cRight,ON); }
+    else if( command == 105 ){ SfNvram_SetMmr1cInstalled(posMmr1cLeft,ON);  }
+
+    else if( command == 106 ){ SfNvram_SetSrrInstalled(posSrrRight,ON); }
+    else if( command == 107 ){ SfNvram_SetSrrInstalled(posSrrCenter,ON);}
+    else if( command == 108 ){ SfNvram_SetSrrInstalled(posSrrLeft,ON);  }
+    else if( command == 109 ){ SfNvram_SetSrrInstalled(posSrrRear,ON);  }
+    
+    else if( command == 110 ){ SfNvram_SetAcc3Installed(posRight,OFF);  }
+    else if( command == 111 ){ SfNvram_SetAcc3Installed(posCenter,OFF); }
+    else if( command == 112 ){ SfNvram_SetAcc3Installed(posLeft,OFF);   }
+    else if( command == 113 ){ SfNvram_SetAcc3Installed(posSteer,OFF);  }
+
+    else if( command == 114 ){ SfNvram_SetMmr1cInstalled(posMmr1cRight,OFF); }
+    else if( command == 115 ){ SfNvram_SetMmr1cInstalled(posMmr1cLeft,OFF);  }
+
+    else if( command == 116 ){ SfNvram_SetSrrInstalled(posSrrRight,OFF); }
+    else if( command == 117 ){ SfNvram_SetSrrInstalled(posSrrCenter,OFF);}
+    else if( command == 118 ){ SfNvram_SetSrrInstalled(posSrrLeft,OFF);  }
+    else if( command == 119 ){ SfNvram_SetSrrInstalled(posSrrRear,OFF);  }
+
+    else { 
+        // do nothing 
+    }
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+static void RpcService_SetSrrFunction(uint16 command)
+{
+	switch(command)
+	{
+        case 200:
+			SfNvram_SetLeftChokeExist(TRUE);
+		    CanDebugPrintf("LeftChoke exist");
+			break;
+        case 201:
+			SfNvram_SetLeftChokeExist(FALSE);
+		    CanDebugPrintf("LeftChoke None");
+			break;
+        case 202:
+			SfNvram_SetRightChokeExist(TRUE);
+		    CanDebugPrintf("RightChoke exist");
+			break;
+        case 203:
+			SfNvram_SetRightChokeExist(FALSE);
+		    CanDebugPrintf("RightChoke None");
+			break;
+
+		case 210:
+			SfNvram_SetTouchSensorInstalled(TRUE);
+			break;
+		case 211:
+			SfNvram_SetTouchSensorInstalled(FALSE);
+			break;
+
+		default:
+			break;
+	}
+}
+//---------------------------------------------------------------------------
+/**
+ * AUXDEVICEのNVRAM値の設定(R5フォーマット）
+ */
+//---------------------------------------------------------------------------
+void Rpc_SetAuxDeviceR5(const rpc_T *rpc)
+{
+    sint8 num, i;
+	uint8 dest;
+    sint8 auxIndex;
+	sint8 formatType;
+    sint16 auxValue;
+    ModeType mode;
+
+    mode = Mode_GetCurrentMode();
+	formatType = (sint8)(rpc->args[0]);
+    num = (sint8)(rpc->args[1]);
+	dest =rpc->args[2];
+
+	if (dest == MBI_A)
+	{
+		SfTransferRpc_ReceiveReq(rpc);
+	}
+	else
+	{
+		if(formatType == VER_20A_R5)//formatTypeがR5フォーマットのとき
+		{
+			//NVRAM値を変更するのはメンテナンスモードのときのみ
+			if( mode == modeMaintenance )
+			{
+				for(i = 0; i < num; i++)
+				{
+					auxIndex = (sint8)(rpc->args[2 * i + 3]);
+					auxValue = (sint16)(rpc->args[2 * i + 4]);
+
+					if( (0 <= auxIndex) && (auxIndex < TRUCK_AUXHARD_NUM) )
+					{
+						SfNvram_SetSfAuxDevice(auxIndex, auxValue);
+					}
+				}
+			}
+		}
+	}
+}
+
+//---------------------------------------------------------------------------
+/**
+ * AUXDEVICEのNVRAM値の設定(R4フォーマット）
+ */
+//---------------------------------------------------------------------------
+void Rpc_SetAuxDeviceR4(const rpc_T *rpc)
+{
+	sint8   index;
+    sint16  value;
+    ModeType mode;
+
+    mode = Mode_GetCurrentMode();
+
+    index = (sint8)(rpc->args[0]);
+    value = (sint16)(rpc->args[1]);
+
+    //NVRAM値を変更するのはメンテナンスモードのときのみ
+    if( mode == modeMaintenance )
+    {
+        if( (0 <= index) && (index < TRUCK_AUXHARD_NUM) )
+        {
+            SfNvram_SetSfAuxDevice(index, value);
+        }
+    }
+}
+
+
+//---------------------------------------------------------------------------
+/**
+ * AUXDEVICEのNVRAM値の問合せ対応
+ */
+//---------------------------------------------------------------------------
+void Rpc_InfoAuxDevice(rpc_T *rpc)
+{
+    uint8 dest, prior;
+    sint8 i, tmpValue;
+	uint8 transferInfo;
+	StructAuxHardInfo auxInfo;
+
+    dest  = rpc->dst;    // 送信元のアドレス(srcとdstが入れ替わる）
+    prior = PRIOR5;
+	transferInfo = rpc->args[0];
+    
+	if( transferInfo == MBI_A )//MBI宛てなら転送
+	{
+		SfTransferRpc_ReceiveReq(rpc);
+	}
+	else
+	{
+		auxInfo.controller = SAFETY_B;
+
+		for(i=0; i<TRUCK_AUXHARD_NUM; i++)
+		{
+			tmpValue = SfNvram_GetSfAuxDevice(i);           /** truckAuxHard */
+        
+			if(tmpValue != -1)
+			{
+				auxInfo.auxHardValue[i] = (uint8)tmpValue;
+			}
+			else
+			{
+				auxInfo.auxHardValue[i] = 0;
+			}
+		}
+
+		// 送信元(CAN-B)にAuxDeviceInfoを送信する
+		 RpcManager_SendMsgNoAck( CAN_B,
+		                         TRUCK_AUX_DEVICES_INFO,
+		                         dest,
+		                         prior,
+		                         sizeof(auxInfo),    /*sizeof(msg),*/
+		                        (uint8*)&auxInfo );  /* (uint8*)&msg );*/
+	}
+}
+

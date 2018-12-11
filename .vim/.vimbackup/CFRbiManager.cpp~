@@ -1,0 +1,158 @@
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "CFRbiManager.h"
+
+CFRbiManager::CFRbiManager(void)
+{
+	//
+}
+
+void CFRbiManager::RbiManagerInit(void)
+{
+#ifdef _FRBI_SIMULATOR
+
+	FrbiObj.RbiInit(RBI1, CRBI_MOUNT_XC,    0.0,      0.0);  // Center
+
+	ClipAreaObj.ClipAreaInit(LBI1);
+
+    //SIMPCだとSafetyコンの転送機能に対応していないため、MBIとFRのVersionが取得できない
+    //そのため、ノードアドレスをPCTOOLにする。
+	CRpcVersionInfoObj.Init(PCTOOL);
+
+#endif
+}
+
+void CFRbiManager::RbiManagerClose(void)
+{
+#ifdef _FRBI_SIMULATOR
+	FrbiObj.RbiClose();
+
+	ClipAreaObj.ClipAreaClose();
+	CRpcVersionInfoObj.Close();
+
+#endif
+}
+
+void CFRbiManager::RbiManagerMain(double xpos, double ypos, double yaw)
+{
+#ifdef _FRBI_SIMULATOR
+
+	FrbiObj.RadarMain(xpos,ypos,yaw);
+	FrbiObj.RbiMain();		// RBIのメインルーチン
+
+	ClipAreaObj.ClipAreaMain(xpos,ypos,yaw);
+    CRpcVersionInfoObj.Main();
+
+#endif
+}
+
+void CFRbiManager::setHandle(HWND hnd)
+{
+    FrbiObj.setHandle(hnd);
+
+	ClipAreaObj.setHandle(hnd);
+    CRpcVersionInfoObj.setHandle(hnd);
+}
+
+int CFRbiManager::GetHandle(void)
+{
+	return(handle);
+}
+
+int CFRbiManager::CanOpen(int ch)
+{
+	int ret = 0;
+#ifdef _FRBI_SIMULATOR
+
+	// ハンドルクリア
+	FrbiObj.SetHandle(canINVALID_HANDLE);
+
+	ClipAreaObj.SetHandle(canINVALID_HANDLE);
+    CRpcVersionInfoObj.SetHandle(canINVALID_HANDLE);
+
+	FrbiObj.CanClose();
+
+	ClipAreaObj.CanClose();
+    CRpcVersionInfoObj.CanClose();
+
+
+	handle = canOpenChannel(ch, canWANT_EXCLUSIVE|canWANT_VIRTUAL);
+
+	ret = FrbiObj.SetHandle(handle);
+
+	ClipAreaObj.SetHandle(handle);
+    CRpcVersionInfoObj.SetHandle(handle);
+
+	FrbiObj.SetGpsCanONOFF(ON);
+
+//	ClipAreaObj.SetGpsCanONOFF(ON);
+  CRpcVersionInfoObj.SetCanONOFF(ON);
+
+
+#endif
+
+	return(ret);
+}
+
+
+int CFRbiManager::SetReceiveBuffer( long id, uchar *data, uint dlc )
+{
+	uchar addr;
+	int ret = 0;
+
+	id = (0x00FF & id);
+	addr = (uchar)id;
+
+	// ブロードキャスト
+	if( addr == 0xFF )
+	{
+		FrbiObj.SetReceiveBuffer(id,data,dlc);
+		ret = ClipAreaObj.SetReceiveBuffer(id,data,dlc);
+		ret = CRpcVersionInfoObj.SetReceiveBuffer(id,data,dlc);
+	}
+	else if( addr == ClipAreaObj.GetSelfId() )
+	{
+		ret = ClipAreaObj.SetReceiveBuffer(id,data,dlc);
+	}
+	else if( addr == CRpcVersionInfoObj.GetSelfId() )
+	{
+		ret = CRpcVersionInfoObj.SetReceiveBuffer(id,data,dlc);
+	}
+	else
+	{
+		// 自分あてか、ブロードキャストは受け取る
+		if( addr == FrbiObj.GetSelfId() )
+		{
+			ret = FrbiObj.SetReceiveBuffer(id,data,dlc);
+		//	break;
+		}
+	}
+
+	return(ret);
+}
+
+
+void CFRbiManager::RadarSetOnceDetected(int ch)
+{
+	FrbiObj.RadarSetOnceDetected(); 
+}
+void CFRbiManager::RadarSetDetected(int ch)
+{
+	FrbiObj.RadarSetDetected(); 
+}
+void CFRbiManager::RadarSetNotDetected(int ch)
+{
+	FrbiObj.RadarSetNotDetected(); 
+}
+
+void CFRbiManager::RadarTestStopScanning(bool flag)
+{
+
+}
+void CFRbiManager::RadarTestStopRadiating(bool flag)
+{
+    FrbiObj.RadarTestStopRadiating(flag);
+}
+

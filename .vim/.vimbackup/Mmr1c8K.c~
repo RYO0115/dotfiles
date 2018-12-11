@@ -1,0 +1,441 @@
+/**
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2009 Komatsu Ltd. All rights reserved.
+ *
+ *    $RCSfile: Mmr1c8K.c,v $
+ *    $Revision: 1.1.1.1 $
+ *    $Author: tojima $
+ *    $Date: 2009/09/15 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Communication module with MMR1C
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#include "ahscommon.h"
+#include "AhsTools.h"
+#include "Mmr1c8K.h"
+#include "ErrorManager.h"
+#include "WarningManager.h"
+#include "ClippingAreaManager.h"
+#include "TruckInfo.h"
+#include "Mmr1cManager.h"
+#include "ModeManager.h"
+#include "MaskContain.h"
+#include "AppIfdef.h"
+
+//#include "RpcManager.h"
+
+#define OBJ_MIN_RANGE   1000    // [mm] 最短距離 1m
+
+
+#define _MMR1C_DEBUG_PRINTF_
+
+//#define _MMR1C_PRINTF_
+
+//#ifdef _MMR1C_PRINTF_
+static uint8  debug_str[128];
+//#endif
+
+
+/**
+ * プライベート関数プロトタイプ宣言
+ */
+static void   Mmr1c_CalcGlobalTargetPosClip(StructMmr1c *pMmr1c);
+StructPointDef ClipDataMsg_ConvertGlobalXY(StructPointDef inpos, StructMmr1c *pMmr1c);
+
+//---------------------------------------------------------------------------
+/**
+ * 初期化
+ */
+//---------------------------------------------------------------------------
+void Mmr1c_Init(
+     StructMmr1c *pMmr1c,      /**< MMR1Cオブジェクトのポインタ */
+     Mmr1cPosition pos,      /**< 取付け位置定義   */
+	 bool flag            /**< 使うか使わないか */
+	 )
+{
+    pMmr1c->pos       = pos;
+
+    pMmr1c->valid     = flag;
+
+    pMmr1c->lbiStart  = FALSE;
+    pMmr1c->luxStart  = FALSE;
+
+    pMmr1c->updated   = FALSE;
+    pMmr1c->targetNum = 0;
+
+    pMmr1c->canComTimer      = 0;
+    pMmr1c->trackRpcTimer    = 0;
+
+    pMmr1c->healthy = FALSE;
+    
+    pMmr1c->packetCounter = 0;
+}
+
+//---------------------------------------------------------------------------
+/**
+ * メイン
+ */
+//---------------------------------------------------------------------------
+void Mmr1c_PreMain(
+	 StructMmr1c *pMmr1c,
+	 sint32 truckX,         /**< 車両の位置 [mm] */
+	 sint32 truckY,         /**< 車両の位置 [mm] */
+	 sint16 truckDir,       /**< 車両の方位角 [1/65536] */
+	 float32  cs,           /**< 方位角のCOS成分 */
+	 float32  sn            /**< 方位角のSIN成分 */
+	 )
+{
+	float32 rx, ry;
+	ZoneType zoneType;
+
+	zoneType = ClippingArea_GetZoneType();
+
+
+	//sprintf(debug_str,"main");
+	//CanDebugPrintf(debug_str);
+
+	// 点検中などはレーダ中心座標にする
+	if( ( zoneType == zoneInspection )
+	 || ( zoneType == zoneCalibration )
+	 || ( zoneType == zoneTest )
+	 || ( zoneType == zoneTest3 ) )
+	{
+		pMmr1c->truckX = 0;
+		pMmr1c->truckY = 0;  // レーダ取り付け座標を入れる
+		pMmr1c->sn = 0;
+		pMmr1c->cs = 1.0;
+	}
+	// それ以外はレーダの絶対座標を計算する
+	else
+	{
+		//pMmr1c->truckX = xpos;
+		//pMmr1c->truckY = ypos;
+
+		pMmr1c->truckX = truckX;
+		pMmr1c->truckY = truckY;
+
+		pMmr1c->sn = sn;
+		pMmr1c->cs = cs;
+	}
+
+	//sprintf(debug_str,"pre_main");
+	//CanDebugPrintf(debug_str);
+	// ターゲットの座標をグローバル座標に変
+	Mmr1c_CalcGlobalTargetPosClip(pMmr1c);
+}
+
+void Mmr1c_Main(StructMmr1c *pMmr1c)
+{
+	//
+}
+
+void Mmr1c_PostMain(StructMmr1c *pMmr1c)
+{
+	pMmr1c->updated = FALSE;
+    
+    // 検知ターゲット情報をクリア
+    pMmr1c->targetNum        = 0;
+
+    // 受信タイマー更新
+    pMmr1c->canComTimer++;
+    if( pMmr1c->canComTimer > T_10SEC )
+    {
+        pMmr1c->canComTimer = T_10SEC;
+	}
+    else
+    {
+        //
+    }
+
+    pMmr1c->closestRange = 200000;  // 200m
+    pMmr1c->closestIndex = -1;
+}
+
+//---------------------------------------------------------------------------
+/**
+ * クリップターゲットの受信
+ */
+//---------------------------------------------------------------------------
+void Mmr1c_ReceiveClippedTargetMsg(
+	StructMmr1c *pMmr1c,   /**< */
+	const uint8 *msg   /**< */
+	)
+{
+	sint16 i, num;
+
+	// タイマークリア
+	pMmr1c->trackRpcTimer    = 0;
+
+	pMmr1c->clipObject.timeStamp   = Tools_GetPtrToShortU(&msg[0]);
+	pMmr1c->clipObject.targetNum   = msg[2];
+
+
+	num = (sint16)pMmr1c->clipObject.targetNum;
+	for( i=0; i<num; i++ )
+	{
+		pMmr1c->clipObject.target[i].xpos     		= Tools_GetPtrToShortS(&msg[ 4+12*i]);
+		pMmr1c->clipObject.target[i].ypos     		= Tools_GetPtrToShortS(&msg[ 6+12*i]);
+		pMmr1c->clipObject.target[i].vx       		= Tools_GetPtrToShortS(&msg[ 8+12*i]);
+		pMmr1c->clipObject.target[i].vy       		= Tools_GetPtrToShortS(&msg[10+12*i]);
+		pMmr1c->clipObject.target[i].power			= msg[12+12*i];
+		pMmr1c->clipObject.target[i].itemFlag 		= msg[13+12*i];
+		pMmr1c->clipObject.target[i].id				= msg[14+12*i];
+		
+		#ifdef _MMR1C_DEBUG_PRINTF_
+		sprintf(debug_str,"target[%d]:itemFlag=%d, speed=(%d,%d)",
+			i,
+			pMmr1c->clipObject.target[i].itemFlag,
+			(sint16)pMmr1c->clipObject.target[i].vx,
+			(sint16)pMmr1c->clipObject.target[i].vy);
+		CanDebugPrintf(debug_str);
+		#endif
+	}
+	
+	
+	//sprintf(debug_str,"msg:%b",msg[2]);
+	//CanDebugPrintf(debug_str);
+
+	// ターゲット数セット
+	pMmr1c->targetNum = num;
+
+	pMmr1c->updated = TRUE;
+
+}
+
+//---------------------------------------------------------------------------
+/**
+ * @return 検知ターゲットオブジェクトのポインタ
+ */
+//---------------------------------------------------------------------------
+StructMmr1cTargetInfo* Mmr1c_GetTrackData(
+	StructMmr1c *pMmr1c,   /**< */
+	sint16 index
+	)
+{
+	if( (0 <= index) && (index < pMmr1c->targetNum) )
+	{
+		return( &pMmr1c->target[index] );
+	}
+	else
+	{
+		return(NULL);
+	}
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+void Mmr1c_SetBaseMmr1cXPos(
+	 StructMmr1c *pMmr1c,  /**<  */
+	 sint32 x          /**<  */
+	 )
+{
+	if( ( 9000 < x ) && ( x < 13000 ) )   // 9m ..13mの範囲
+	{
+		pMmr1c->basePos.xpos  = x;
+	}
+	else
+	{
+		//
+	}
+}
+
+void Mmr1c_SetBaseMmr1cYPos(
+	 StructMmr1c *pMmr1c,  /**<  */
+	 sint32 y          /**<  */
+	 )
+{
+	if ( ( -3000 < y ) && ( y < 3000 ) )  // -3m .. 3mの範囲
+	{
+		pMmr1c->basePos.ypos  = y;
+	}
+	else
+	{
+		//
+	}
+}
+
+void Mmr1c_SetBaseMmr1cTheta(
+	 StructMmr1c *pMmr1c,  /**<  */
+	 sint16 theta      /**<  */
+	 )
+{
+	if ( ( -16384 < theta ) && ( theta < 16384 ) ) // -90deg .. 90degの範囲
+	{
+		pMmr1c->basePos.theta = theta;
+	}
+	else
+    {
+        //
+    }
+}
+
+//---------------------------------------------------------------------------
+/**
+ * MMR1Cが計測準備OKかどうか
+ * @retval TRUE  準備OK
+ * @retval FALSE まだ
+ */
+//---------------------------------------------------------------------------
+bool Mmr1c_IsReady(const StructMmr1c *pMmr1c)
+{
+    return(pMmr1c->luxStart);
+}
+
+
+void Mmr1c_SetReady(StructMmr1c *pMmr1c, bool flag)
+{
+	pMmr1c->luxStart = flag;
+}
+
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+// プライベート関数
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+static void Mmr1c_CalcGlobalTargetPosClip(StructMmr1c *pMmr1c)
+{
+	StructPointDef inpos, outpos;
+	sint32  latpos;
+	sint16  index, ret;
+	bool    clippedFlag;
+	sint8   stat;
+
+
+	for( index = 0; index<pMmr1c->targetNum; index++ )
+	{
+		// 検知ターゲットバッファへの展開
+		pMmr1c->target[index].id      = pMmr1c->clipObject.target[index].id;
+		pMmr1c->target[index].speed   = (sint16)(15.625f*(float)pMmr1c->clipObject.target[index].vx); 
+		//障害物を一次元(トラックの進行方向(x方向))でのみ考えるため
+		//pMmr1c->target[index].speed   = (sint16)(1.0*(float)pMmr1c->clipObject.target[index].vx);  //障害物を一次元(トラックの進行方向(x方向))でのみ考えるため
+
+		clippedFlag = FALSE;
+
+		// 車両中心座標
+		inpos.xpos = (sint32)(15.625f * (float)pMmr1c->clipObject.target[index].xpos);  // [mm] 1000 = 15.625 * 64.0
+		inpos.ypos = (sint32)(15.625f * (float)pMmr1c->clipObject.target[index].ypos);
+		
+		// 距離 [mm]
+		//pMmr1c->target[index].range = inpos.ypos; // [mm]
+		//pMmr1c->target[index].range = inpos.xpos; // [mm]
+		pMmr1c->target[index].range = inpos.xpos; // [mm]
+		
+		// グローバル座標へ変換
+		outpos = ClipDataMsg_ConvertGlobalXY(inpos, pMmr1c);
+		
+		
+		// X,Y [mm]
+		pMmr1c->target[index].xpos = outpos.xpos;
+		pMmr1c->target[index].ypos = outpos.ypos;
+
+		// power
+		pMmr1c->target[index].power = pMmr1c->clipObject.target[index].power;
+
+		// 最短の距離のものを求める
+		if( pMmr1c->closestRange > pMmr1c->target[index].range )
+		{
+			pMmr1c->closestRange = pMmr1c->target[index].range;
+			pMmr1c->closestIndex = index;
+		}
+		else
+		{
+			//
+		}
+	}
+
+
+#ifdef _MMR1C_PRINTF_
+
+
+	if( pMmr1c->targetNum != 0 )
+	{
+		// 車両の位置
+		sprintf(debug_str,"Truck:%ld %ld %d", TruckInfo_GetX(),
+									  TruckInfo_GetY(),
+									  TruckInfo_GetHeading() );
+		CanDebugPrintf(debug_str);
+
+		// レーダの種類
+		sprintf(debug_str,"Mmr1c:%d %d",(sint16)pMmr1c->pos, (sint16)pMmr1c->targetNum);
+		CanDebugPrintf(debug_str);
+
+		// レーダの位置
+		sprintf(debug_str,"Radar:%ld %ld %d",pMmr1c->globalPos.xpos,
+									 pMmr1c->globalPos.ypos,
+									 pMmr1c->globalPos.theta);
+		CanDebugPrintf(debug_str);
+
+		for( index = 0; index<pMmr1c->targetNum; index++ )
+		{
+			//sprintf(debug_str,"%d", pMmr1c->target[index].speed);
+			//CanDebugPrintf(debug_str);
+
+			// ターゲットの位置
+			sprintf(debug_str,"Target[%d] : (Xw, Yw, trackingID, Power) = (%f, %f, %d, %d)",
+									index,
+									((float)(pMmr1c->target[index].xpos)),
+									((float)(pMmr1c->target[index].ypos)),
+									pMmr1c->target[index].id,
+									pMmr1c->target[index].power);
+			CanDebugPrintf(debug_str);
+			sprintf(debug_str,"Target[%d] : speed = %f",
+											index,
+											((float)pMmr1c->target[index].speed));
+			CanDebugPrintf(debug_str);
+		}
+
+
+	}
+
+	//sprintf(debug_str,"%d_clipNum:%ld",(sint16)pMmr1c->pos,pMmr1c->clipObject.num);
+	//CanDebugPrintf();
+	//sprintf(debug_str,"%d_errorScore:%ld",(sint16)pMmr1c->pos,pMmr1c->blindScoreError);
+	//CanDebugPrintf(debug_str);
+
+#endif //#ifdef _MMR1C_PRINTF_
+
+}
+
+
+
+StructPointDef ClipDataMsg_ConvertGlobalXY(StructPointDef inpos, StructMmr1c *pMmr1c)
+{
+	float32 xf, yf, cs, sn;
+	StructPointDef outpos;
+
+	xf = (float32)inpos.xpos;
+	yf = (float32)inpos.ypos;
+
+	// 回転移動
+	//cs = pMmr1c->sn;
+	//sn = pMmr1c->cs;
+	sn = pMmr1c->sn;
+	cs = pMmr1c->cs;
+
+	outpos.xpos = (sint32)((xf * cs) - (yf * sn));
+	outpos.ypos = (sint32)((xf * sn) + (yf * cs));
+
+	// 平行移動
+	outpos.xpos += pMmr1c->truckX;
+	outpos.ypos += pMmr1c->truckY;
+
+	return(outpos);
+}
+
+

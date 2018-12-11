@@ -1,0 +1,583 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2009 Komatsu Ltd. All rights reserved.
+ * 
+ *    $RCSfile: Mmr1cDiagnosis.c,v $
+ *    $Revision: 1.1.1.1 $
+ *    $Author: tojima $
+ *    $Date: 2009/09/15 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Communication module with MMR1C
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#include "ahscommon.h"
+#include "AhsTools.h"
+#include "ErrorManager.h"
+#include "WarningManager.h"
+#include "TruckInfo.h"
+#include "Course.h"
+#include "ModeManager.h"
+#include "ClippingAreaManager.h"
+#include "Mmr1cDiagnosis.h"
+#include "AppMain.h"
+#include "Mmr1cManager.h"
+
+#include "RpcManager.h"
+#include "AppIfdef.h"
+
+
+#define _FURUKAWA_DIAG_DEBUG_
+
+#ifdef  _FURUKAWA_DIAG_DEBUG_
+    char furukawaDiagStr[128];
+#endif
+
+/**
+ * プライベート関数
+ */
+static bool Mmr1cDiagnosis_CheckChannel(sint16 ch);
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+void Mmr1cDiagnosis_ReceiveError(
+    StructMmr1c *pMmr1c,   /**< */
+    const uint8 *msg         /**< */
+    )
+{
+    pMmr1c->canComTimer = 0;
+    pMmr1c->packetCounter++;
+
+	pMmr1c->error.status = msg[0];
+
+    // RBIからエラーRPCを受信したら、RBIは起動したとする
+    // もしRPCを受信しなければ、CAN通信異常かRBIの電源異常
+    pMmr1c->rbiStart = TRUE;
+
+
+    // MMR1C計測準備がOKかどうか
+    if( (pMmr1c->error.status & 0x01) != 0x01 )
+    {
+        Mmr1c_SetReady(pMmr1c,FALSE);    // まだ
+    }
+    else
+    {
+        Mmr1c_SetReady(pMmr1c,TRUE);    // 準備OK
+    }
+
+    #ifdef _FURUKAWA_DIAG_DEBUG_
+//    sprintf(furukawaDiagStr,"%d,start %x",pMmr1c->pos,pMmr1c->error.warning2.bitf.W_Overflow_1);
+//    CanDebugPrintf(furukawaDiagStr);
+	#endif
+}
+
+//---------------------------------------------------------------------------
+/**
+ * RBI起動チェック
+ * Luxをもとに作成しているためErrorはLBIを継承
+ * @retval TRUE  RBIが起動した
+ * @retval FALSE RBIからまったくメッセージを受信していない（起動してない）
+ */
+//---------------------------------------------------------------------------
+bool Mmr1cDiagnosis_CheckRbiReady(const StructMmr1c *pMmr1c)
+{
+	bool ret = TRUE;
+
+	if( pMmr1c->valid == TRUE )
+	{
+		if( pMmr1c->rbiStart == FALSE )
+		{
+			ret = FALSE;
+			if( pMmr1c->pos == posMmr1cRight)
+			{
+				Error_Set(E_LBI_NOT_READY1);//4E53
+			}
+			else if( pMmr1c->pos == posMmr1cLeft)
+			{
+				Error_Set(E_LBI_NOT_READY2);//4E63
+			}
+			else
+			{
+				// do nothing
+			}
+		}
+		else
+		{
+			// do nothing;
+		}
+	}
+	else
+	{
+		// do nothing
+	}
+
+	return(ret);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * Safety - RBIの通信チェック
+ * @retval TRUE  正常
+ * @retval FALSE 1秒以上通信が途切れた
+ */
+//---------------------------------------------------------------------------
+bool Mmr1cDiagnosis_CheckSafetyRbiCommunication(const StructMmr1c *pMmr1c)
+{
+	bool ret = TRUE;
+
+	if( pMmr1c->valid == TRUE )
+	{
+		// RBI-Safety
+		if( pMmr1c->canComTimer > T_1SEC )
+		{
+			ret = FALSE;
+
+			if( pMmr1c->pos == posMmr1cRight)
+			{
+				Error_Set(E_RBI_HEARTBEAT0);
+			}
+			else if( pMmr1c->pos == posMmr1cLeft)
+			{
+				Error_Set(E_RBI_HEARTBEAT1);
+			}
+
+			else
+			{
+				// do nothing
+			}
+		}
+		else
+		{
+			// do nothing
+		}
+	}
+	else
+    {
+        // do nothing
+    }
+
+	return(ret);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * RBIが走行コンからNPOSITIONを受信したかどうか
+ * @retval TRUE  正常
+ * @retval FALSE 1秒以上NPOSITIONを受信していない
+ */
+//---------------------------------------------------------------------------
+bool Mmr1cDiagnosis_CheckRbiNposition(const StructMmr1c *pMmr1c)
+{
+    bool ret = TRUE;
+/*
+    if( pMmr1c->valid == TRUE )
+    {
+        // 通信異常状態が1秒以上続いたら、エラーとする
+        if( ( pMmr1c->error.lbiError.bitf.noNposition == TRUE ) 
+//         && ( TruckInfo_GetMovingStatus() == MOVE_FORWARD ) 
+          )
+        {
+            ret = FALSE;
+            
+			if( pMmr1c->pos == posMmr1cRight)
+            {
+                Error_Set(E_RBI_NPOSITION0);
+            }
+            else if( pMmr1c->pos == posMmr1cLeft)
+            {
+                Error_Set(E_RBI_NPOSITION1);
+            }
+            else
+            {
+                // do nothing
+            }
+		}
+        else
+        {
+            // do nothing;
+        }
+	}
+    else
+    {
+        // do nothing
+    }
+*/
+    return(ret);
+}
+
+
+
+//---------------------------------------------------------------------------
+/**
+ * MMR1Cの動作モードチェック
+ * @retval TRUE  Operation Mode（MMR1C起動中）
+ * @retval FALSE Suspend Mode  （MMR1C休止中）
+ */
+//---------------------------------------------------------------------------
+bool Mmr1cDiagnosis_CheckMmr1cOperationMode(const StructMmr1c *pMmr1c)
+{
+	uint16 errorCode;
+	bool   ret = TRUE;
+	static sint16 timer[MMR1C_NUM];
+	sint16 ch;
+	ModeType mode;
+	bool noCommPowerCycleFlagRight,noCommPowerCycleFlagLeft;
+
+	noCommPowerCycleFlagRight = Mmr1cManager_GetNoCommPowerCycleFlagRight();
+	noCommPowerCycleFlagLeft  = Mmr1cManager_GetNoCommPowerCycleFlagLeft();
+
+	ch = (sint16)pMmr1c->pos;
+	mode = Mode_GetCurrentMode();
+
+	if( Mmr1cDiagnosis_CheckChannel(ch) == FALSE )
+	{
+		return(FALSE);
+	}
+	else
+	{
+		// do nothing
+	}
+
+	if( pMmr1c->valid == TRUE )
+	{
+		// エラーコード定義
+
+		if( pMmr1c->pos == posMmr1cRight)
+		{
+			errorCode = E_MMR1C_WRONG_MODE1;
+		}
+		else if( pMmr1c->pos == posMmr1cLeft)
+		{
+			errorCode = E_MMR1C_WRONG_MODE2;
+		}
+		else
+		{
+			errorCode = 0;
+		}
+
+		// A,S,Eモード中はOperationモードでなければならない
+		//if(  pMmr1c->error.status != 0x02 )
+		if( (pMmr1c->error.status & 0x02) != 0x02)  // radiateしているか
+		{
+			
+			if( ( mode == modeAuto )
+			 || ( mode == modeError )
+			 || ( mode == modeStop )
+			  )
+			{
+		//		sprintf(furukawaDiagStr, "mode_inside");
+		//		CanDebugPrintf(furukawaDiagStr);
+				
+				//PowerCycle中は一旦カウンタを止める
+				if( (noCommPowerCycleFlagRight==FALSE)
+				 || (noCommPowerCycleFlagLeft==FALSE) )
+				{
+					timer[ch]++;
+				}
+				else if( noCommPowerCycleFlagRight == TRUE )
+				{
+					timer[posMmr1cRight] = 0;
+				}
+				else if( noCommPowerCycleFlagLeft== TRUE )
+				{
+					timer[posMmr1cLeft] = 0;
+				}
+				else
+				{
+					timer[ch] = 0;
+				}
+			}
+			else
+			{
+				timer[ch] = 0;
+			}
+			ret = FALSE;  // Suspend Mode中
+		}
+		else
+		{
+			ret = TRUE;
+			timer[ch] = 0;    // Operation Mode中
+		}
+
+		// エラー・ワーニングセット
+		if( ( 0 < timer[ch] ) && (timer[ch] < T_20SEC ) )
+		{
+			if( mode == modeAuto )
+			{
+				// ワーニングで停止させておく
+				Warning_Set(errorCode);
+			}
+			else
+			{
+				// do nothing
+			}
+		}
+		else if( T_20SEC <= timer[ch] )
+		{
+			// 20秒たってもOperationにならなければエラーにする
+			Error_Set(errorCode);
+			timer[ch] = T_20SEC;
+		}
+		else
+		{
+			Warning_Clear(errorCode);
+		}
+	}
+	else
+	{
+		// do nothing
+	}
+
+	return(ret);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * RBI - MMR1Cの通信チェック
+ * @retval TRUE (正常）
+ * @retval FALSE
+ */
+//---------------------------------------------------------------------------
+bool Mmr1cDiagnosis_CheckRbiMmr1cCommunication(const StructMmr1c *pMmr1c)
+{
+	bool ret = TRUE;
+	bool noCommPowerCycleFlagRight,noCommPowerCycleFlagLeft;
+
+	noCommPowerCycleFlagRight = Mmr1cManager_GetNoCommPowerCycleFlagRight();
+	noCommPowerCycleFlagLeft  = Mmr1cManager_GetNoCommPowerCycleFlagLeft();
+
+	if( pMmr1c->valid == TRUE )
+	{
+		// Operation中に通信異常状態が続いたら、エラーとする
+		if( Mmr1c_IsReady(pMmr1c) == TRUE )
+		{
+			if( (pMmr1c->error.status & 0x01) != 0x01 )   // Radar-RBI間の通信異常
+			{
+				ret = FALSE;
+
+				if( pMmr1c->pos == posMmr1cRight)
+				{
+					Error_Set(E_MMR1C_NORESPONCE1);  // 0xE51
+				}
+				else if( pMmr1c->pos == posMmr1cLeft)
+				{
+					Error_Set(E_MMR1C_NORESPONCE2);  // 0xE61
+				}
+				else
+				{
+					//
+				}
+			}
+			else // 通信正常
+			{
+				//PowerCycleから復帰
+				if( pMmr1c->pos == posMmr1cRight )
+				{
+					Mmr1cManager_RecoveryNoCommPowerCycleRight();
+				}
+				if( pMmr1c->pos == posMmr1cLeft )
+				{
+					Mmr1cManager_RecoveryNoCommPowerCycleLeft();
+				}
+			}
+		}
+		//NoCommでPowerCycleをおこなった場合は、Errorを発報し続ける
+		else if( (noCommPowerCycleFlagRight==TRUE)
+			  || (noCommPowerCycleFlagLeft ==TRUE) )
+		{
+			ret = FALSE;
+			Error_Set(E_MMR1CODS_NOT_READY);
+		}
+		else
+		{
+			//do nothing
+		}
+	}
+	else
+	{
+		// do nothing
+	}
+	return(ret);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * RBI - MMR1Cの通信チェック
+ * @retval TRUE （正常）
+ * @retval FALSE
+ */
+//---------------------------------------------------------------------------
+bool Mmr1cDiagnosis_CheckTrackMsgCommunication(StructMmr1c *pMmr1c)
+{
+    bool ret = TRUE;
+    
+	if( pMmr1c->valid == TRUE )
+	{
+		if( pMmr1c->trackRpcTimer > T_1SEC )
+		{
+			ret = FALSE;
+
+			if( pMmr1c->pos == posMmr1cRight)
+			{
+				Error_Set(E_MMR1C_PACKET_LOST1);
+			}
+			else if( pMmr1c->pos == posMmr1cLeft)
+			{
+	 //           Error_Set(E_MMR1C_PACKET_LOST2);
+			}
+
+			else
+			{
+				// do nothing
+			}
+		}
+		else
+		{
+			// do nothing
+		}
+
+		pMmr1c->trackRpcTimer++;
+		if( pMmr1c->trackRpcTimer > T_10SEC )
+		{
+			pMmr1c->trackRpcTimer = T_10SEC;
+        }
+        else
+        {
+            //
+        }
+
+    }
+    else
+    {
+        // do nothing
+    }
+
+    return(ret);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * MMR1Cの自己診断
+ * @retval TRUE （正常）
+ * @retval FALSE
+ */
+//---------------------------------------------------------------------------
+bool Mmr1cDiagnosis_SelfDiagnosisError1(const StructMmr1c *pMmr1c)
+{
+	uint16 offset;
+	bool   ret = TRUE;
+
+	if( pMmr1c->valid == TRUE )
+	{
+		// レーダの区別
+		if( pMmr1c->pos == posMmr1cRight)
+		{
+			offset = 0;
+		}
+		else if( pMmr1c->pos == posMmr1cLeft)
+		{
+			offset = 0x10;
+		}
+		else
+		{
+			return(ret);
+		}
+
+		// エラーダイアグノシスコードの解釈
+		if( (pMmr1c->error.status & 0x04) == 0x04 )  // internal error
+		{
+			Error_Set(E_MMR1C_MOTOR1 + offset);
+			ret = FALSE;
+		}
+		else
+		{
+			 // do nothing
+		}
+
+		if( (pMmr1c->error.status & 0x08) == 0x08 ) // CAN error
+		{ 
+		    Error_Set(E_MMR1C_IF_ERROR1 + offset);
+		    ret = FALSE;
+		}
+		else
+		{
+		     // do nothing
+		}
+
+		if( (pMmr1c->error.status & 0x10) == 0x10 )   // IC error
+		{ 
+		    Error_Set(E_MMR1C_CONFIG1 + offset);
+		    ret = FALSE;
+		}
+		else
+		{
+		     // do nothing
+		}
+
+		if( (pMmr1c->error.status & 0x20) == 0x20 )   // temperature error
+		{
+		    Error_Set(E_MMR1C_TIMEOUT1 + offset);
+		    ret = FALSE;
+		}
+		else
+		{
+		     // do nothing
+		}
+
+		if( (pMmr1c->error.status & 0x40) == 0x40 )   // memory error
+		{ 
+		    Error_Set(E_MMR1C_OTHER1 + offset);
+		    ret = FALSE;
+		}
+		else
+		{
+		     // do nothing
+		}
+
+
+    }
+    else
+    {
+        //
+    }
+    
+    return(ret);
+}
+
+
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+// プライベート関数
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+static bool Mmr1cDiagnosis_CheckChannel(sint16 ch)
+{
+    bool ret;
+
+	if( (0 <= ch) && (ch < MMR1C_NUM) )
+    {
+        ret = TRUE;
+    }
+    else
+    {
+        Error_Set(E_SOFTWARE_EXCEPTION3);
+        ret = FALSE;
+    }
+    
+    return(ret);
+}
+
+/* end of file */

@@ -1,0 +1,50 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2009 Komatsu Ltd. All rights reserved.
+ * 
+ *    $RCSfile: ContiCommon.h,v $
+ *    $Revision: 1.1.1.1 $
+ *    $Author: tojima $
+ *    $Date: 2009/09/15 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Communication module with ARS408
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+#ifndef __CONTI_COMMON_H__
+#define __CONTI_COMMON_H__
+
+#include "FurukawaCommon.h"
+
+#define ARS408_NUM           2
+
+#define MAX_CLIP_TARGET  10
+#define MAX_ARS408_VERTEX   10
+#define MAX_ARS408_OBJECTS   (MAX_CLIP_TARGET + MAX_ARS408_VERTEX)
+#define MAX_CONTI_OBJECTS 20
+
+
+/** 
+ * レーダのポジション定義
+ */
+/*
+typedef enum{
+    posLuxRight  = 0,
+    posLuxLeft   = 1,
+    posLuxNone   = 2
+} Ars408Position;
+*/
+/**
+ * ターゲットタイプ定義
+ */
+typedef enum{
+	object  = 0,
+	cluster = 1
+} Ars408TargetType;
+
+
+#endif  //__CONTI_COMMON_H__
+

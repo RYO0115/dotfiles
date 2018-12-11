@@ -1,0 +1,62 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2009 Komatsu Ltd. All rights reserved.
+ * 
+ *    $RCSfile: FurukawaCommon.h,v $
+ *    $Revision: 1.1.1.1 $
+ *    $Author: tojima $
+ *    $Date: 2009/09/15 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Communication module with MMR1C
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+#ifndef __FURUKAWA_COMMON_H__
+#define __FURUKAWA_COMMON_H__
+
+#define MMR1C_NUM           2
+
+#define MAX_CLIP_TARGET  10
+#define MAX_MMR1C_VERTEX   10
+#define MAX_MMR1C_OBJECTS   (MAX_CLIP_TARGET + MAX_MMR1C_VERTEX)
+#define MAX_FURUKAWA_OBJECTS 20
+
+
+/** 
+ * レーダのポジション定義
+ */
+typedef enum{
+    posMmr1cRight  = 0,
+    posMmr1cLeft   = 1,
+    posMmr1cNone   = 2
+} Mmr1cPosition;
+
+/**
+ * ターゲットタイプ定義
+ */
+typedef enum{
+	allTarget  = 0,
+	clipTarget = 1
+} Mmr1cTargetType;
+
+
+/**
+ * 共通型定義
+ */
+typedef struct{
+    sint32 xpos;
+    sint32 ypos;
+    sint16 theta;
+} StructPointDef;
+
+typedef struct{
+    float32  xpos;
+    float32  ypos;
+    float32  rad;
+} StructPointF;
+
+#endif  //__FURUKAWA_COMMON_H__
+

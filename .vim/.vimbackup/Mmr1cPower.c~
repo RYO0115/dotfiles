@@ -1,0 +1,350 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2006 Komatsu Ltd. All rights reserved.
+ * 
+ *  $RCSfile: Mmr1cPower.c,v $
+ * $Revision: 1.1.1.1 $
+ *   $Author: tojima $
+ *     $Date: 2005/07/06 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: ODS Power Supply ON/OFF Control
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+#include "ahscommon.h"
+
+#include "Mmr1cPower.h"
+#include "AhsDout.h"
+#include "AppIoDefine.h"
+#include "RpcManager.h"
+#include "WarningManager.h"
+#include "ErrorManager.h"
+#include "SelfVoltCheck.h"
+#include "Mmr1cManager.h"
+#include "AppIfdef.h"
+
+
+
+/** レーダ電源リレー
+*/
+typedef struct{
+    bool       relayReq; 
+    bool       lowVolt;
+    bool       cycleReq;
+    sint16     resetTimer;
+    bool       checkMmr1cStart;
+    sint16     startCheckCount;
+    StructDout dout;            /** リレー出力 */
+} StructMmr1cPower;
+
+
+static StructMmr1cPower luxPower;
+
+// PRIVATE関数のプロトタイプ宣言
+static void Mmr1cPower_Diagnosis(void);
+static void Mmr1cPower_LowVoltage(void);
+static void Mmr1cPower_CheckMmr1cStart(void);
+
+//---------------------------------------------------------------------------
+/** モジュール情報の表示
+ * @param 
+ * @retval
+ */
+//---------------------------------------------------------------------------
+void Mmr1cPower_ShowInfo(void)
+{
+#ifdef _SHOW_MMR1C_POWER_INFO_
+    char str[64];
+
+    CanDebugPrintf("MMR1C/ODS Power");
+    sprintf(str," >relayOn :%d", luxPower.relayReq           ); CanDebugPrintf(str);
+    sprintf(str," >output  :%d", luxPower.dout.outputStatus  ); CanDebugPrintf(str);
+    sprintf(str," >diag    :%d", luxPower.dout.diagnosis  ); CanDebugPrintf(str);
+#endif
+}
+
+//---------------------------------------------------------------------------
+/** 
+ * 初期化
+ */
+//---------------------------------------------------------------------------
+void Mmr1cPower_Init(void)
+{
+    AhsDout_Init(&luxPower.dout,  DOUT_MMR1C_POWER, T_200MSEC );
+
+    luxPower.resetTimer = 0;
+    luxPower.relayReq   = OFF;
+    luxPower.cycleReq   = OFF;
+    luxPower.lowVolt    = ON;
+    luxPower.checkMmr1cStart   = FALSE;
+    luxPower.startCheckCount = 0;
+
+    AhsDout_SetValue(&luxPower.dout, OFF);
+}
+//---------------------------------------------------------------------------
+/** 
+ * メイン
+ */
+//---------------------------------------------------------------------------
+void Mmr1cPower_Main(void)
+{
+    bool output;
+    static bool prevOutput = OFF;
+
+    if( luxPower.dout.ch != -1 )
+    {
+        // レーダ電源出力要求がONでかつ電源電圧が18V以上のときだけ出力する
+        if( (luxPower.relayReq == ON) && (luxPower.lowVolt == OFF) )
+        {
+            output = ON;    // レーダ電源ON
+        }
+        else 
+        {
+            output = OFF;  // レーダ電源OFF
+        }
+
+        // ON/OFFセット
+        AhsDout_SetValue(&luxPower.dout, output);
+
+        // レーダ電源リレーダイアグノシス
+        Mmr1cPower_Diagnosis();
+        
+        // レーダ電源のリセットコントロール
+        if( luxPower.cycleReq==ON )
+        {
+			luxPower.resetTimer--;
+            if( luxPower.resetTimer <= 0 )
+            {
+                luxPower.resetTimer = 0;
+                Mmr1cPower_On();
+                luxPower.cycleReq = OFF;
+            }
+        }
+        
+        // 電源電圧が18V以下になったらODS電源をOFFする
+        Mmr1cPower_LowVoltage();
+        
+        if( (prevOutput==OFF)&&(output==ON) )
+        {
+			luxPower.checkMmr1cStart = TRUE;
+		}
+        
+        //MMR1Cの起動チェック
+        Mmr1cPower_CheckMmr1cStart();
+        prevOutput = output;
+        
+        if( output == OFF )
+        {
+			//電源OFFのときは常にゼロに戻す
+			luxPower.checkMmr1cStart = FALSE;
+			luxPower.startCheckCount = 0;
+		}
+    }
+    else
+    {
+        //
+    }
+}
+
+//---------------------------------------------------------------------------
+/**
+ * IO出力
+ */
+//---------------------------------------------------------------------------
+void Mmr1cPower_PostMain(void)
+{
+    if( DOUT_MMR1C_POWER != -1 )
+    {
+        // チャンネル設定
+        AhsDout_SetChannel(&luxPower.dout, DOUT_MMR1C_POWER);
+
+        // レーダ電源リレーへの出力
+        AhsDout_Output(&luxPower.dout);
+    }
+    else
+    {
+        //
+    }
+}
+
+
+//---------------------------------------------------------------------------
+/** 
+ * レーダ電源のON/OFFセット
+ */
+//---------------------------------------------------------------------------
+void Mmr1cPower_On(void)
+{
+    luxPower.relayReq = ON;
+}
+void Mmr1cPower_Off(void)
+{
+    luxPower.relayReq = OFF;
+}
+bool Mmr1cPower_GetMmr1cPower(void)
+{
+	return(luxPower.relayReq);
+}
+//---------------------------------------------------------------------------
+/**
+ * 3秒間電源をOFFする
+ */
+//---------------------------------------------------------------------------
+void Mmr1cPower_Cycle(void)
+{
+    // 電源ONの時だけ受け付ける
+    if( luxPower.relayReq == ON ) 
+    {
+        luxPower.resetTimer = T_3SEC;
+        luxPower.cycleReq   = ON;
+        Mmr1cPower_Off();
+    }
+}
+
+//---------------------------------------------------------------------------
+/**
+ * RPCによるODS電源のリセット（OFF/ON）
+ * テスト用のRPCであり、モニパソからしか送信されない
+ */
+//---------------------------------------------------------------------------
+void Mmr1cPower_CycleRpc(rpc_T* rpc)
+{
+    Mmr1cPower_Cycle();
+}
+
+//---------------------------------------------------------------------------
+/** 
+ * @param 
+ * @return
+ */
+//---------------------------------------------------------------------------
+AhsIoError Mmr1cPower_GetDiagnosis(void)
+{
+    return(AhsDout_GetDiagnosis(&luxPower.dout));
+}
+//---------------------------------------------------------------------------
+/** 
+ * @param 
+ * @return レーダ電源リレーへの出力 (ON/OFF)
+ */
+//---------------------------------------------------------------------------
+bool Mmr1cPower_GetOutput(void)
+{
+    return(AhsDout_GetOutputStatus(&luxPower.dout));
+}
+//---------------------------------------------------------------------------
+/** 
+ * @retval TRUE  MMR1CODS電源あり
+ * @retval FALSE MMR1CODS電源なし
+ */
+//---------------------------------------------------------------------------
+bool Mmr1cPower_isAvailable(void)
+{
+	bool ret;
+	
+	if( luxPower.dout.ch == -1 )
+	{
+	    ret= FALSE;
+	}
+	else
+	{
+	    ret= TRUE;
+	}
+	return(ret);
+}
+
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+// プライベート関数
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+/** 
+ * レーダ電源リレー出力の故障診断
+ * @param 
+ * @retval
+ * LoSide出力なので、地絡は検出できない
+ */
+//---------------------------------------------------------------------------
+static void Mmr1cPower_Diagnosis(void)
+{
+    AhsIoError diag;
+
+    AhsDout_SelfDiag(&luxPower.dout);
+
+    // ダイアグノシスコードの取得
+    diag = AhsDout_GetDiagnosis(&luxPower.dout);
+
+    // ワーニングのセットなど
+
+    if( diag==ioOpen )
+    {
+        Error_Set(E_RADAR_POWER_OPEN);
+    }
+    else if( diag==ioGndShort )
+    {
+        Error_Set(E_RADAR_POWER_GNDSHORT);
+    }
+    else if( diag==ioHotShort )
+    {
+        Error_Set(E_RADAR_POWER_HOTSHORT);
+    }
+    else
+    {
+        //
+    }
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 電源電圧が18V以下になったら電源保護のために出力をOFFする
+ * 20V以上になったらONする
+ * そのコントロールのため、18V以下になったらLowVoltageフラグを立てる
+ * Mmr1cPower_Main()で、レーダ電源をコントロールする
+ */
+//---------------------------------------------------------------------------
+static void Mmr1cPower_LowVoltage(void)
+{
+    uint32 voltIn;
+    
+    voltIn = GetVinVoltage(VIN_KEY_CH);
+    
+    if( voltIn <= VOLTAGE_LIMIT )  // 18V以下
+    {
+        luxPower.lowVolt   = ON;
+    }
+    else if( voltIn > (VOLTAGE_LIMIT + 2000) )  // 20V以上
+    {
+        luxPower.lowVolt   = OFF;
+    }
+    else
+    {
+		//
+	}
+}
+
+static void Mmr1cPower_CheckMmr1cStart(void)
+{
+	if( luxPower.checkMmr1cStart == TRUE )
+	{
+		if( (Mmr1cManager_GetMmr1cStartFlag(posMmr1cRight)==TRUE)
+		 && (Mmr1cManager_GetMmr1cStartFlag(posMmr1cLeft)==TRUE) )
+		{
+			luxPower.checkMmr1cStart = FALSE;
+			luxPower.startCheckCount = 0;
+		}
+		else
+		{
+			luxPower.startCheckCount++;
+		}
+		
+		if( luxPower.startCheckCount >= T_1MIN )
+		{
+			Mmr1cPower_Cycle();
+		}
+	}
+}
+

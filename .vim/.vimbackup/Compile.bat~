@@ -1,0 +1,32 @@
+@echo off
+rem
+rem    @brief CRコンコンパイル用バッチファイル
+rem    
+rem	   @note 使い方：binフォルダに置いて、ダブルクリックするだけ。
+rem    @author Atsushi Sakai
+rem    @date 2014/05/23 
+
+rem SHCコンパイラ用設定
+set SHC_INSTALL=C:\Hew3\Tools\Hitachi\Sh\7_1_3
+set PATH=%SHC_INSTALL%\Bin;%PATH%
+set SHC_LIB=%SHC_INSTALL%\Bin
+set SHC_INC=%SHC_INSTALL%\Include
+set SHC_TMP=C:\Tmp
+
+rem CYGWIN 用設定
+SET MAKE_MODE=UNIX
+SET PATH=d:\cygwin\bin;d:\cygwin\usr\bin;d:\cygwin\usr\local\bin;%PATH%
+
+echo Now compiling... please wait :(
+echo;
+
+rem make実行
+make clean
+make
+
+rem バッチファイル終了
+echo;
+echo Finish!!  :)
+echo;
+pause
+exit

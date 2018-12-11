@@ -1,0 +1,41 @@
+
+#ifndef __CONTIRBI_MANAGER_H__
+#define __CONTIRBI_MANAGER_H__
+
+#include "Common.h"
+#include "CContiRbi.h"
+#include "CClippingArea.h"
+#include "CRpc_VersionInfo.h"
+
+class CContiRbiManager
+{
+private:
+	int handle;
+
+public:
+
+	CContiRbiManager();
+	
+	CContiRbi		ContirbiObj;			// RBI通信オブジェクト
+	CClippingArea  ClipAreaObj;
+    CRpc_Version_Info CRpcVersionInfoObj;
+	
+	void RbiManagerInit(void);
+	void RbiManagerClose(void);
+    void RbiManagerMain(double xpos, double ypos, double yaw);
+
+	void setHandle(HWND handle);
+	int  GetHandle(void);
+	int  CanOpen(int ch);
+
+	int  SetReceiveBuffer( long id, uchar *data, uint dlc );
+	void RadarSetOnceDetected(int ch);
+	void RadarSetDetected(int ch);
+	void RadarSetNotDetected(int ch);
+	void RadarTestStopScanning(bool flag);
+	void RadarTestStopRadiating(bool flag);
+
+};
+
+#endif
+

@@ -1,0 +1,234 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2006 Komatsu Ltd. All rights reserved.
+ * 
+ *  $RCSfile: InspProgress.h,v $
+ * $Revision: 1.1.1.1 $
+ *   $Author: tojima $
+ *     $Date: 2005/07/06 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Safety Controller
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+
+#include "ahscommon.h"
+#include "InspProgress.h"
+#include "CanIDManager.h"
+#include "RpcManager.h"
+#include "AppNvram.h"
+
+/**
+ * 始業点検進捗
+ */
+typedef struct{
+    sint16           number;
+    EnumInspProgress modeLamp;
+    EnumInspProgress headLight;
+    EnumInspProgress horn;
+    EnumInspProgress ods;
+    EnumInspProgress cautionPanel;
+    EnumInspProgress srrFront;
+    EnumInspProgress srrRear;
+} StructInspProgress;
+
+static StructInspProgress progress;
+
+//---------------------------------------------------------------------------
+/**
+ * 初期化
+ */
+//---------------------------------------------------------------------------
+void InspProgress_Init(void)
+{
+	sint16 odsType;
+	odsType = AppNvram_GetOdsType();
+
+	// 始業点検進捗状況の初期化
+	progress.modeLamp     = inspNotyet;
+	progress.headLight    = inspNotyet;
+	progress.horn         = inspNotyet;
+	progress.ods          = inspNotyet;
+	progress.cautionPanel = inspInvalid;
+	if( (odsType==ACC3X3_LUXX2_SRRX4)||(odsType==ESRX3_LUXX2_SRRX4) )
+	{
+		progress.number       = 7;
+		progress.srrFront     = inspNotyet;
+		progress.srrRear      = inspNotyet;
+	}
+	else if( odsType == ESRX3_LUXX2 )
+	{
+		progress.number       = 7;
+	    progress.srrFront     = inspInvalid;
+	    progress.srrRear      = inspInvalid;
+	}
+	else
+	{
+		progress.number       = 5;
+	    progress.srrFront     = inspInvalid;
+	    progress.srrRear      = inspInvalid;
+	}
+}
+
+
+//---------------------------------------------------------------------------
+/**
+ * 点検状況のセット
+ */
+//---------------------------------------------------------------------------
+void InspProgress_SetModeLamp(EnumInspProgress status)
+{
+    if( status != inspNotyet)
+    {
+        progress.modeLamp = status;
+    }
+}
+void InspProgress_SetHeadlight(EnumInspProgress status)
+{
+    if( status != inspNotyet)
+    {
+        progress.headLight = status;
+    }
+}
+void InspProgress_SetHorn(EnumInspProgress status)
+{
+    if( status != inspNotyet)
+    {
+        progress.horn = status;
+    }
+}
+void InspProgress_SetOds(EnumInspProgress status)
+{
+    if( status != inspNotyet)
+    {
+        progress.ods = status;
+    }
+}
+void InspProgress_SetCautionPanel(EnumInspProgress status)
+{
+	progress.cautionPanel = inspInvalid;
+}
+void InspProgress_SetSrrFront(EnumInspProgress status)
+{
+	sint16 odsType;
+	odsType = AppNvram_GetOdsType();
+	
+    if( status != inspNotyet)
+    {
+        progress.srrFront = status;
+    }
+    
+    if( (odsType==ACC3X4)||(odsType==ESRX3_LUXX2) )
+    {
+		progress.srrFront = inspInvalid;
+}
+}
+void InspProgress_SetSrrRear(EnumInspProgress status)
+{
+	sint16 odsType;
+	odsType = AppNvram_GetOdsType();
+
+    if( status != inspNotyet)
+    {
+        progress.srrRear = status;
+    }
+
+    if( (odsType==ACC3X4)||(odsType==ESRX3_LUXX2) )
+    {
+		progress.srrRear = inspInvalid;
+}
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 点検状況の取得
+ */
+//---------------------------------------------------------------------------
+sint16 InspProgress_GetNumber(void)
+{
+    return(progress.number);
+}
+EnumInspProgress InspProgress_GetModeLamp(void)
+{
+    return(progress.modeLamp);
+}
+EnumInspProgress InspProgress_GetHeadlight(void)
+{
+    return(progress.headLight);
+}
+EnumInspProgress InspProgress_GetHorn(void)
+{
+    return(progress.horn);
+}
+EnumInspProgress InspProgress_GetOds(void)
+{
+    return(progress.ods);
+}
+EnumInspProgress InspProgress_GetCautionPanel(void)
+{
+    return(progress.cautionPanel);
+}
+EnumInspProgress InspProgress_GetSrrFront(void)
+{
+    return(progress.srrFront);
+}
+EnumInspProgress InspProgress_GetSrrRear(void)
+{
+    return(progress.srrRear);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 始業点検状況の送信
+ */
+//---------------------------------------------------------------------------
+typedef struct{
+    sint8 number;
+    sint8 modeLamp;
+    sint8 headLight;
+    sint8 horn;
+    sint8 ods;
+    sint8 caution;
+//  sint8 stlock;
+    sint8 srrFront;
+    sint8 srrRear;
+} StructInspRpcStatus;
+
+void InspProgress_SendMsg(void)
+{
+    uint8  prior, dest;
+    StructInspRpcStatus status;
+    
+    // 現在の進捗をセット
+    status.number    = (sint8)InspProgress_GetNumber();
+    status.modeLamp  = (sint8)InspProgress_GetModeLamp();    
+    status.headLight = (sint8)InspProgress_GetHeadlight();   
+    status.horn      = (sint8)InspProgress_GetHorn();
+    status.ods       = (sint8)InspProgress_GetOds();
+    status.caution   = (sint8)InspProgress_GetCautionPanel();
+    status.srrFront  = (sint8)InspProgress_GetSrrFront();
+    status.srrRear   = (sint8)InspProgress_GetSrrRear();
+
+    // 送信先アドレスのセット
+    if( inspection_GetSource()==CanIDManager_GetSupervisorCanID() ) { prior = CanIDManager_GetSupervisorPriority(); }
+    else if( inspection_GetSource()==MBI_A ) { prior = PRIOR_MBI; }
+    else { prior = PRIOR5; }
+
+    dest = inspection_GetSource();
+
+    // 送信
+//    RpcManager_SendMsg( CAN_A,
+    RpcManager_SendMsg( inspection_GetCANPort(dest),
+                        INSP_STATUS_SAFE,
+                        dest,
+                        prior,
+                        status.number+1,
+                        (uint8*)&status);
+
+}
+
+

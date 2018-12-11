@@ -1,0 +1,413 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2005 Komatsu Ltd. All rights reserved.
+ * 
+ *  $RCSfile: ErrorTable.c,v $
+ * $Revision: 1.1.1.1 $
+ *   $Author: tojima $
+ *     $Date: 2005/07/06 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: ErrorTable
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#include "ErrorTable.h"
+#include "AppErrorTable.h"
+
+// エラーコードテーブル構造体の定義
+// See ErrorTable.c
+//typedef struct{
+//    uint16         code;         エラーコード
+//    uint16         rAction;      エラーリカバーアクション
+//                                 ( bit0=ｾﾝﾄﾗﾙからのﾘｽﾀｰﾄ拒否
+//                                  bit4=自動ﾘｽﾀｰﾄを受け付けるかどうか(ON:受け付けない)
+//                                  bit5=同一ｴﾗｰが1min以内に発生したときに自動ﾘｽﾀｰﾄを受け付けるかどうか(ON:受け付けない)
+//    
+//    ErrorAction    eAction;      エラー検知後のデフォルトアクション
+//                                 safetyコンの eRearBrake は、Driveコンが eAllBrake として処置します。
+//    WarningAction  wAction;      ワーニング検知後のデフォルトアクション
+//    char           message[32];  SUPERVISOR表示用エラーメッセージ
+//} StructErrorTable;
+
+static const StructErrorTable ahsErrorTable[] = 
+{
+    // Engine
+    {E_CANT_STOP_ENGINE,        0x20,   eSlowlyStop, wNoAction, "Can't stop engine"             },
+    {E_CANT_START_ENGINE,       0x20,   eSlowlyStop, wNoAction, "Can't start engine"            },
+    {E_ENGINE_STOPPED,          0x10,   eSlowlyStop, wNoAction, "Engine Stopped"                },
+    {E_SF_STOPPED_ENGINE,       0x20,   eSlowlyStop, wNoAction, "Safety stopped Engine"         },
+    {E_EG_STOPPED_CAUTION,      0x20,   eSlowlyStop, wNoAction, "Safety stopped EG by caution"  },
+    {E_ENGINE_SIG_CAUTION,      0x20,   eSlowlyStop, wNoAction, "EG Run or EG Speed failure"    },
+    {E_EMERGENCY_STEERING,      0x20,   eSlowlyStop, wNoAction, "emergency steering"            },
+
+    // A/M Key
+    {E_MA_KEYCUT,               0x20,   eAllBrake, wNoAction, "A/M Key Disconnection"         },
+    {E_MA_KEYSHORT,             0x20,   eAllBrake, wNoAction, "A/M Key Short circuit"         },
+
+    // NVRAM
+    {E_NVRAM_CHECKSUM,          0x20,   eSlowlyStop, wNoAction, "NVRAM check sum error"         },
+    {E_NVRAM_CLEARED ,          0x20,   eSlowlyStop, wNoAction, "NVRAM cleared"                 },
+    {E_NVRAM_NEED_ODSCALIB ,    0x20,   eSlowlyStop, wNoAction, "Need ODS calibration"          },
+
+    {E_NO_FLIGHT_RECORDER,      OFF,    eNoAction,   wNoAction, "Flight recorder not connected" },
+    {E_NO_CF_CARD,              OFF,    eNoAction,   wNoAction, "No CFCard in Flight recorder"  },
+    {E_FR_NO_CANCOMM,           OFF,    eNoAction,   wNoAction, "Flight recorder no CAN comm"   },
+ 	{E_FR_NO_LAN,               OFF,    eNoAction,   wNoAction, "No LAN cable in Flight recorder"  },
+	{E_FR_CF_ERR,               OFF,    eNoAction,   wNoAction, "Corrupt file in Flight recorder"  },
+
+    {E_WRONG_FR_POWER,          OFF,    eNoAction,   wNoAction, "Wrong FR power circuit"        },
+    {E_TOO_MANY_OBSTACLE,       OFF,    eSlowlyStop, wNoAction, "Too many obstacles"            },
+
+    {E_ZONE_BUFFER_EMPTY,       OFF,    eSlowlyStop, wNoAction, "Clipping area error"           },
+    {E_RBI_CANID,               0x20,   eSlowlyStop, wNoAction, "RBI CAN ID error"              },
+
+    // 電源電圧
+    {E_LOWBAT_BATT,             0x20,   eSlowlyStop, wNoAction, "Low volt(unswitched power)"    },
+    {E_LOWBAT_KEY,              0x20,   eSlowlyStop, wNoAction, "Low volt(switched power)"      },
+    {E_LOWBAT_VIS,              0x20,   eSlowlyStop, wNoAction, "Low volt(sol power)"           },
+
+	//位置異常
+    {E_COURSE_OUT_WRONG_POSITION,0x31,  eEmergency,  wNoAction,  "Course out(wrong position)"   },
+
+    // 速度異常
+    {E_TRUCK_KEEP_MOVING   ,    0x31,  eEmergency,  wNoAction,  "Truck is moving at end"        },
+    {E_TRUCK_WRONG_DIRECTION,   0x31,  eEmergency,  wNoAction,  "Truck moves wrong direction"   },
+    {E_TRUCK_NOT_REACH_TARGET,  0x31,  eEmergency,  wNoAction,  "Truck not reach target"        },
+    {E_DRIVE_DISCARD_E_STOP,    0x31,  eEmergency,  wNoAction,  "Drive discard E-STOP"          },
+    
+
+    // 配線
+    {E_R_LAMP_OPEN,             0x20,   eNoAction,   wNoAction, "RED mode lamp disconnect"      },
+    {E_G_LAMP_OPEN,             0x20,   eNoAction,   wNoAction, "GREEN mode lamp disconnect"    },
+    {E_Y_LAMP_OPEN,             0x20,   eNoAction,   wNoAction, "AMBER mode lamp disconnect"    },
+    {E_RADAR_POWER_OPEN,        0x20,   eSlowlyStop, wNoAction, "Radar Power Line disconnect"   },
+    {E_HEADLIGHT_OPEN,          0x20,   eNoAction,   wNoAction, "Headlight relay disconnect"    },
+    {E_HEADLIGHT_HI_OPEN,       0x20,   eNoAction,   wNoAction, "Headlight 2 relay disconnect"  },
+    {E_HORN_OPEN,               0x20,   eNoAction,   wNoAction, "Horn relay disconnect"         },
+    {E_RESTREQ_OPEN,            0x20,   eNoAction,   wNoAction, "RestReq relay disconnect"      },
+    {E_AUTOAPPLY_OPEN,          0x20,   eNoAction,   wNoAction, "AutoApply relay disconnect"    },
+    {E_TURN_L_LIGHT_OPEN,       0x20,   eNoAction,   wNoAction, "Turn(L) light disconnect"      },
+    {E_TURN_R_LIGHT_OPEN,       0x20,   eNoAction,   wNoAction, "Turn(R) light disconnect"      },
+    {E_EG_START_OPEN,           0x20,   eSlowlyStop, wNoAction, "EG start relay disconnect"     },
+    {E_EG_STOP_OPEN,            0x20,   eSlowlyStop, wNoAction, "EG stop relay disconnect"      },
+//    {E_BRAKE_LOCK_OPEN,         0x20,   eSlowlyStop, wNoAction, "BrakeLock relay disconnect"  },
+    {E_PARKING_BRAKE_OPEN,      0x20,   eSlowlyStop, wNoAction, "BrakeLock relay disconnect"    },
+
+    {E_R_LAMP_GNDSHORT,         0x20,   eNoAction,   wNoAction, "RED mode lamp GND short"       },
+    {E_G_LAMP_GNDSHORT,         0x20,   eNoAction,   wNoAction, "GREEN mode lamp GND short"     },
+    {E_Y_LAMP_GNDSHORT,         0x20,   eNoAction,   wNoAction, "AMBER mode lamp GND short"     },
+    {E_RADAR_POWER_GNDSHORT,    0x20,   eSlowlyStop, wNoAction, "Radar Power Line GND short"    },
+    {E_HEADLIGHT_GNDSHORT,      0x20,   eNoAction,   wNoAction, "Headlight relay GND short"     },
+    {E_HEADLIGHT_HI_GNDSHORT,   0x20,   eNoAction,   wNoAction, "Headlight 2 relay GND short"   },
+    {E_HORN_GNDSHORT,           0x20,   eNoAction,   wNoAction, "Horn relay GND short"          },
+    {E_RESTREQ_GNDSHORT,        0x20,   eNoAction,   wNoAction, "RestReq relay GND short"       },
+    {E_AUTOAPPLY_GNDSHORT,      0x20,   eNoAction,   wNoAction, "AutoApply relay GND short"     },
+    {E_TURN_L_LIGHT_GNDSHORT,   0x20,   eNoAction,   wNoAction, "Turn(L) light GND short"       },
+    {E_TURN_R_LIGHT_GNDSHORT,   0x20,   eNoAction,   wNoAction, "Turn(R) light GND short"       },
+    {E_EG_START_GNDSHORT,       0x20,   eNoAction,   wNoAction, "EG start relay GND short"      },
+    {E_EG_STOP_GNDSHORT,        0x20,   eNoAction,   wNoAction, "EG stop relay GND short"       },
+//    {E_BRAKE_LOCK_GNDSHORT,     0x20,   eSlowlyStop, wNoAction, "BrakeLock relay GND short"   },
+    {E_PARKING_BRAKE_GNDSHORT,  0x20,   eSlowlyStop, wNoAction, "Park brake relay GND short"    },
+
+    {E_R_LAMP_HOTSHORT,         0x20,   eNoAction,   wNoAction, "RED mode lamp Hot short"       },
+    {E_G_LAMP_HOTSHORT,         0x20,   eNoAction,   wNoAction, "GREEN mode lamp Hot short"     },
+    {E_Y_LAMP_HOTSHORT,         0x20,   eNoAction,   wNoAction, "AMBER mode lamp Hot short"     },
+    {E_RADAR_POWER_HOTSHORT,    0x20,   eSlowlyStop, wNoAction, "Radar Power Line Hot short"    },
+    {E_HEADLIGHT_HOTSHORT,      0x20,   eNoAction,   wNoAction, "Headlight relay Hot short"     },
+    {E_HEADLIGHT_HI_HOTSHORT,   0x20,   eNoAction,   wNoAction, "Headlight 2 relay Hot short"   },
+    {E_HORN_HOTSHORT,           0x20,   eNoAction,   wNoAction, "Horn relay Hot short"          },
+    {E_RESTREQ_HOTSHORT,        0x20,   eNoAction,   wNoAction, "RestReq relay Hot short"       },
+    
+    //2007/06/26 : AHS Ver1.2 001.003.004 , Shibata
+    {E_AUTOAPPLY_HOTSHORT,      0x20,   eSlowlyStop, wNoAction, "AutoApply relay Hot short"     },
+    {E_TURN_L_LIGHT_HOTSHORT,   0x20,   eNoAction,   wNoAction, "Turn(L) light Hot short"       },
+    {E_TURN_R_LIGHT_HOTSHORT,   0x20,   eNoAction,   wNoAction, "Turn(R) light Hot short"       },
+    {E_EG_START_HOTSHORT,       0x20,   eSlowlyStop, wNoAction, "EG start relay Hot short"      },
+    {E_EG_STOP_HOTSHORT,        0x20,   eSlowlyStop, wNoAction, "EG stop relay Hot short"       },
+//    {E_BRAKE_LOCK_HOTSHORT,     0x20,   eSlowlyStop, wNoAction, "BrakeLock relay Hot short"     },
+    {E_PARKING_BRAKE_HOTSHORT,  0x20,   eSlowlyStop, wNoAction, "Park brake relay Hot short"    },
+
+    // 車両コーション
+    {E_LOW_STEERING_PRESSURE,   0x20,   eNoAction,   wNoAction, "<B1>Low Steering Pressure"     },
+    {E_LOW_ACCUMULATOR_PRESS,   0x20,   eSlowlyStop, wNoAction, "<C1>Low Accumulator Pressure"  },
+    {E_LOW_BRAKE_PRESSURE,      0x20,   eSlowlyStop, wNoAction, "<E1>Low Brake Pressure"        },
+    {E_LOW_OIL_TANK_LEVEL,      0x20,   eSlowlyStop, wNoAction, "<A2>Low Hydraulic Tank Level"  },
+    {E_STOP_ENGINE_E3,          0x20,   eSlowlyStop, wNoAction, "<E3>Stop Engine"               },
+    {E_OIL_TEMP_HIGH,           0x20,   eSlowlyStop, wNoAction, "<D5>Hydraulic Oil Temp. High"  },
+    {E_BRAKE_OIL_TMP_HIGH,      0x20,   eSlowlyStop, wNoAction, "<A1>Brake Oil Tmp. High"       },
+    {E_NO_PROPEL_RETARD,        0x20,   eRearBrake,  wNoAction, "<A5>No Propel/Retard"          },
+    {E_NO_PROPEL,               0x20,   eRearBrake,  wNoAction, "<A6>No Propel"                 },
+    {E_PROPEL_SYS_AT_REST,      0x20,   eRearBrake,  wNoAction, "<B6>Propel System at rest"     },
+    {E_PROPEL_NOT_READY,        0x20,   eNoAction,  wNoAction, "<C6>Propel system not ready"    },
+    {E_IFM_WARNING,             0x20,   eSlowlyStop, wNoAction, "<D5>IM Warning"                },
+    {E_BATTERY_CHARGE,          0x20,   eSlowlyStop, wNoAction, "<E5>Battery charge"            },
+
+    {E_LOW_AUTO_LUBE,           0x20,   eNoAction,   wNoAction,  "<B2>Low Auto Lube Pressure"   },
+    {E_CIRCUIT_BREAK,           0x20,   eNoAction,   wNoAction,  "<C2>Circuit Breaker Tripped"  },
+    {E_OIL_FILTER,              0x20,   eNoAction,   wNoAction,  "<D2>Hydraulic Oil Filter"     },
+    {E_LOW_FUEL,                0x20,   eNoAction,   wNoAction,  "<E2>Low Fuel"                 },
+    {E_5MIN_SHUTDOWN_TIMER,     0x20,   eNoAction,   wNoAction,  "<C4>5min shutdown timer"      },
+    {E_CHECK_ENGINE,            0x20,   eNoAction,   wNoAction,  "<E4>CHECK ENGINE"             },
+    {E_PROPEL_TEMP_CAUTION,     0x20,   eNoAction,   wNoAction,  "<C5>Propulsion system temp."  },
+    {E_REDUCED_PROPEL,          0x20,   eNoAction,   wNoAction,  "<D6>Reduced Propel System"    },
+    {E_RETARD_AT_REDUCE,        0x20,   eNoAction,   wNoAction,  "<E6>Retard at reduced level"  },
+    {E_PROPEL_SYS_CAUTION,      0x20,   eNoAction,   wNoAction, "<B5>Propel System Caution"     },
+
+    {E_FIRE_SUPPRESS_ACTIVATE,  0x10,   eSlowlyStop, wNoAction,  "Fire suppression activated"   },
+    {E_FIRE_SUPPRESS_WIRING,    OFF,    eNoAction,   wNoAction,  "Fire suppression wire problem"},
+
+    // レーダ
+
+    {E_DETECT_RADAR1,           0x11,   eRearBrake,  wSlow10Now,  "Detected by Radar(Right)"    },
+    {E_DETECT_RADAR2,           0x11,   eRearBrake,  wSlow10Now,  "Detected by Radar(Center)"   },
+    {E_DETECT_RADAR3,           0x11,   eRearBrake,  wSlow10Now,  "Detected by Radar(Left)"     },
+    {E_DETECT_RADAR4,           0x11,   eRearBrake,  wSlow10Now,  "Detected by Radar(Steer)"    },
+
+    {E_ACC3_NORESPONCE0,        0x20,   eSlowlyStop,  wStopWait,  "Radar(R) no response"        },
+    {E_RBI_HEARTBEAT0,          0x20,   eSlowlyStop,  wStopWait,  "RBI(R) no response"          },
+    {E_RBI_NOT_READY0,          0x20,   eSlowlyStop,  wStopWait,  "RBI(R) not ready"            },
+    {E_ACC3_LOWSENSITIVE0,      0x20,   eNoAction,    wStopWait,  "Radar(R) low sensitivity"    },
+
+    {E_ACC3_NORESPONCE1,        0x20,   eSlowlyStop,  wStopWait,  "Radar(C) no response"        },
+    {E_RBI_HEARTBEAT1,          0x20,   eSlowlyStop,  wStopWait,  "RBI(C) no response"          },
+    {E_RBI_NOT_READY1,          0x20,   eSlowlyStop,  wStopWait,  "RBI(C) not ready"            },
+    {E_ACC3_LOWSENSITIVE1,      0x20,   eNoAction,    wStopWait,  "Radar(C) low sensitivity"    },
+
+    {E_ACC3_NORESPONCE2,        0x20,   eSlowlyStop,  wStopWait,  "Radar(L) no response"        },
+    {E_RBI_HEARTBEAT2,          0x20,   eSlowlyStop,  wStopWait,  "RBI(L) no response"          },
+    {E_RBI_NOT_READY2,          0x20,   eSlowlyStop,  wStopWait,  "RBI(L) not ready"            },
+    {E_ACC3_LOWSENSITIVE2,      0x20,   eNoAction,    wStopWait,  "Radar(L) low sensitivity"    },
+
+    {E_ACC3_NORESPONCE3,        0x20,   eSlowlyStop,  wStopWait,  "Radar(S) no response"        },
+    {E_RBI_HEARTBEAT3,          0x20,   eSlowlyStop,  wStopWait,  "RBI(S) no response"          },
+    {E_RBI_NOT_READY3,          0x20,   eSlowlyStop,  wStopWait,  "RBI(S) not ready"            },
+    {E_ACC3_LOWSENSITIVE3,      0x20,   eNoAction,    wStopWait,  "Radar(S) low sensitivity"    },
+
+    {E_FLS_SCAN_OPERATIONAL0,   0x20,   eSlowlyStop, wStopWait, "Radar(R) scan not operational" },
+    {E_FLS_XCVR_OPERATIONAL0,   0x20,   eSlowlyStop, wStopWait, "Radar(R) xcvr not operational" },
+    {E_FLS_COMM_ERROR0,         0x20,   eSlowlyStop, wStopWait, "Radar(R) communication error"  },
+    {E_FLS_OVERHEAT_ERROR0,     0x20,   eSlowlyStop, wStopWait, "Radar(R) temperature error"    },
+    {E_FLS_VOLT_SUPPLY_ERROR0,  0x20,   eSlowlyStop, wStopWait, "Radar(R) voltage supply error" },
+    {E_FLS_INTERNAL_ERROR0,     0x20,   eSlowlyStop, wStopWait, "Radar(R) internal error"       },
+    {E_FLS_RANGE_PERF_ERROR0,   0x20,   eSlowlyStop, wStopWait, "Radar(R) performance degraded" },
+    {E_FLS_UNKNOWN_ERROR0,      0x20,   eSlowlyStop, wStopWait, "Radar(R) unknown error"        },
+
+    {E_FLS_SCAN_OPERATIONAL1,   0x20,   eSlowlyStop, wStopWait, "Radar(C) scan not operational" },
+    {E_FLS_XCVR_OPERATIONAL1,   0x20,   eSlowlyStop, wStopWait, "Radar(C) xcvr not operational" },
+    {E_FLS_COMM_ERROR1,         0x20,   eSlowlyStop, wStopWait, "Radar(C) communication error"  },
+    {E_FLS_OVERHEAT_ERROR1,     0x20,   eSlowlyStop, wStopWait, "Radar(C) temperature error"    },
+    {E_FLS_VOLT_SUPPLY_ERROR1,  0x20,   eSlowlyStop, wStopWait, "Radar(C) voltage supply error" },
+    {E_FLS_INTERNAL_ERROR1,     0x20,   eSlowlyStop, wStopWait, "Radar(C) internal error"       },
+    {E_FLS_RANGE_PERF_ERROR1,   0x20,   eSlowlyStop, wStopWait, "Radar(C) performance degraded" },
+    {E_FLS_UNKNOWN_ERROR1,      0x20,   eSlowlyStop, wStopWait, "Radar(C) unknown error"        },
+
+    {E_FLS_SCAN_OPERATIONAL2,   0x20,   eSlowlyStop, wStopWait, "Radar(L) scan not operational" },
+    {E_FLS_XCVR_OPERATIONAL2,   0x20,   eSlowlyStop, wStopWait, "Radar(L) xcvr not operational" },
+    {E_FLS_COMM_ERROR2,         0x20,   eSlowlyStop, wStopWait, "Radar(L) communication error"  },
+    {E_FLS_OVERHEAT_ERROR2,     0x20,   eSlowlyStop, wStopWait, "Radar(L) temperature error"    },
+    {E_FLS_VOLT_SUPPLY_ERROR2,  0x20,   eSlowlyStop, wStopWait, "Radar(L) voltage supply error" },
+    {E_FLS_INTERNAL_ERROR2,     0x20,   eSlowlyStop, wStopWait, "Radar(L) internal error"       },
+    {E_FLS_RANGE_PERF_ERROR2,   0x20,   eSlowlyStop, wStopWait, "Radar(L) performance degraded" },
+    {E_FLS_UNKNOWN_ERROR2,      0x20,   eSlowlyStop, wStopWait, "Radar(L) unknown error"        },
+
+    {E_FLS_SCAN_OPERATIONAL3,   0x20,   eSlowlyStop, wStopWait, "Radar(S) scan not operational" },
+    {E_FLS_XCVR_OPERATIONAL3,   0x20,   eSlowlyStop, wStopWait, "Radar(S) xcvr not operational" },
+    {E_FLS_COMM_ERROR3,         0x20,   eSlowlyStop, wStopWait, "Radar(S) communication error"  },
+    {E_FLS_OVERHEAT_ERROR3,     0x20,   eSlowlyStop, wStopWait, "Radar(S) temperature error"    },
+    {E_FLS_VOLT_SUPPLY_ERROR3,  0x20,   eSlowlyStop, wStopWait, "Radar(S) voltage supply error" },
+    {E_FLS_INTERNAL_ERROR3,     0x20,   eSlowlyStop, wStopWait, "Radar(S) internal error"       },
+    {E_FLS_RANGE_PERF_ERROR3,   0x20,   eSlowlyStop, wStopWait, "Radar(S) performance degraded" },
+    {E_FLS_UNKNOWN_ERROR3,      0x20,   eSlowlyStop, wStopWait, "Radar(S) unknown error"        },
+
+    // Motor
+    {E_MOTOR_POT_ERROR,         0x20,   eSlowlyStop, wStopWait, "Motor Pot out of range"        },
+    {E_MOTOR_JUMP,              0x20,   eSlowlyStop, wStopWait, "Motor Jump"                    },
+    {E_MOTOR_LINECUT,           0x20,   eSlowlyStop, wStopWait, "Motor control line cut"        },
+    {E_MOTOR_SHORT,             0x20,   eSlowlyStop, wStopWait, "Motor control line short"      },
+
+    // ODS Power
+    {E_RESET_ODS,               0x20,   eSlowlyStop, wStopWait, "Safety reset ODS Power"        },
+    {E_RESET_MMR1C,               OFF,    eSlowlyStop, wStopWait, "Safety reset Laser Power"      },
+    
+    // 走行コン
+    {E_DRIVE_HEARTBEAT_CUT,     0x20,   eSlowlyStop, wNoAction,  "Loss of Heart Beat(Drive)"    },
+    {E_NO_NPOSITION,            0x20,   eRearBrake,  wNoAction,  "No CAN-B com (Drive-Safe) "   },
+    {E_DRIVE_DEAD,              0x20,   eEmergency,  wNoAction,  "CR-Drive not working"         },
+    {E_TRUCK_TYPE_WRONG,        0x20,   eSlowlyStop, wNoAction,  "Wrong truck type"             },
+    {E_EMGREQ_FROM_DRIVE,       OFF,    eEmergency,  wNoAction,  "EmgBrake request from Drive"  },
+    {E_DRIVE_E_MODE,            OFF,    eSlowlyStop, wNoAction,  "CR-Drive E mode "             },
+    {E_DRIVE_CAN_A,             0x20,   eSlowlyStop, wNoAction,  "CR-Drive has CAN-A problem"   },
+    {E_NO_DRIVE_CANA_HEARTBEAT, 0x20,   eSlowlyStop, wNoAction,  "No CAN-A com (Drive-Safe)"    },
+    {E_DRIVE_NOT_READY,         0x20,   eSlowlyStop, wNoAction,  "Drive not ready"              },
+    {E_WRONG_POSITION_INSTALL,  0x20,   eSlowlyStop, wNoAction,  "Controller wrong position"    },
+    {E_ID_WIRING_CUT,           0x20,   eSlowlyStop, wNoAction,  "Identifier line cut"          },
+    {E_DRIVE_WRONG_MODE,        0x20,   eRearBrake,  wNoAction,  "Drive unknown mode "          },
+    
+    // 管制
+    {E_EMERGENCY_STOP,          OFF,    eSlowlyStop, wNoAction,  "Emergency stop from Central"  },
+    {E_SUPERVISOR_HEARTBEAT,    OFF,    eSlowlyStop, wStopWait,  "SUPERVISOR Heartbeat stop"    },
+    {E_ROUTER_HEARTBEAT,        OFF,    eSlowlyStop, wStopWait,  "ROUTER Heartbeat stop"        },
+    {E_SUPERVISOR_NOT_READY,    OFF,    eSlowlyStop, wNoAction,  "SUPERVISOR Not Ready"         },
+    {E_ROUTER_NOT_READY,        OFF,    eSlowlyStop, wNoAction,  "ROUTER Not Ready"             },
+    {E_MASK_STILL_SENDING,      OFF,    eSlowlyStop, wNoAction,  "Obstacle mask still sending"  },
+    {E_MASK_BUFFER_FULL,        OFF,    eNoAction,   wNoAction,  "Obstacle mask buffer full"    },
+
+    // MBI
+    {E_MBI_HEARTBEAT,           0x20,   eSlowlyStop,   wNoAction, "MBI stop working"            },
+    {E_MBI_NOTREADY,            0x20,   eSlowlyStop,   wNoAction, "MBI Not Ready"               },
+    {E_IFM_HEARTBEAT,           0x20,   eSlowlyStop,   wNoAction, "Interface Module stops"      },
+    {E_IFM_NOTREADY,            0x20,   eSlowlyStop,   wNoAction, "Interface Module not ready"  },
+    {E_MBI_RESTARTED,           0x20,   eSlowlyStop,   wStopWait, "MBI restarted"               },
+    {E_NO_IFM_BROADCAST,        0x20,   eSlowlyStop,   wNoAction, "IFM broadcast not coming"    },
+    {E_BRAKE_FAILURE,           0x20,   eSlowlyStop,   wStopWait, "CR-Drive's brake failure"    },
+    {E_VHMS_HEARTBEAT,          0x20,   eSlowlyStop,   wNoAction, "VHMS data stops"             },
+    {E_VHMS_NOTREADY,           0x20,   eSlowlyStop,   wNoAction, "VHMS not ready"              },
+    {E_NO_NETWORK_DATA,         0x20,   eSlowlyStop,   wNoAction, "Truck data does not coming"  },
+    
+    // SpeedProfile , TrajectoryData
+    {W_WRONG_SPEED_PROFILE_SIZE,    OFF,    eNoAction, wNoAction, "Wrong Speed Profile(size)"   },
+    {W_WRONG_SPEED_PROFILE_SIGN_F,  OFF,    eNoAction, wNoAction, "Wrong Speed Profile(sign F)" },
+    {W_WRONG_SPEED_PROFILE_SIGN_R,  OFF,    eNoAction, wNoAction, "Wrong Speed Profile(sign R)" },
+    {W_WRONG_SPEED_PROFILE_ENDSPEED,OFF,    eNoAction, wNoAction, "Wrong Speed Profile(end)"    },
+    {W_WRONG_SPEED_PROFILE_NOTRJ,   OFF,    eNoAction, wNoAction, "Wrong Speed Profile(no trj)" },
+    {W_WRONG_SPEED_PROFILE_CRC,     OFF,    eNoAction, wNoAction, "Wrong Speed Profile(crc)"    },
+    {W_WRONG_SPEED_PROFILE_TIME,    OFF,    eNoAction, wNoAction, "Wrong Speed Profile(time)"   },
+    {W_WRONG_SPEED_PROFILE_INDEX,   OFF,    eNoAction, wNoAction, "Wrong Speed Profile(index)"  },
+
+    {W_WRONG_TRAJECTORY_SIZE,   OFF,    eNoAction, wNoAction, "Wrong Trajectory Data(size)"     },
+    {W_WRONG_TRAJECTORY_ANGLE,  OFF,    eNoAction, wNoAction, "Wrong Trajectory Data(angle)"    },
+    {W_WRONG_TRAJECTORY_DISTANCE,   OFF,    eNoAction, wNoAction, "Wrong Trajectory Data(dis)"  },
+    {W_WRONG_TRAJECTORY_CRC,    OFF,    eNoAction, wNoAction, "Wrong Trajectory Data(crc)"      },
+    {W_WRONG_TRAJECTORY_INDEX,  OFF,    eNoAction, wNoAction, "Wrong Trajectory Data(index)"    },
+
+    {E_SAFETY_ERROR_TEST,       OFF,    eSlowlyStop, wStopWait, "Safety debug test"             },
+    {E_SAFETY_ERROR_TEST2,      0x10,   eSlowlyStop, wStopWait, "Safety debug test"             },
+
+    // セントラルに報告しないもの
+    {W_DOWNHILL,                OFF,    eNoAction,   wSlow40,   "speed limit on downhill"       },
+    
+    {E_SOFTWARE_EXCEPTION1,     0x20,    eSlowlyStop, wNoAction, "Software excpetion1"          },
+    {E_SOFTWARE_EXCEPTION2,     0x20,    eSlowlyStop, wNoAction, "Software excpetion2"          },
+    {E_SOFTWARE_EXCEPTION3,     0x20,    eSlowlyStop, wNoAction, "Software excpetion3"          },
+
+    // MMR1C (FURUKAWA-Laser)
+    {E_DETECT_MMR1C,             0x11,    eRearBrake,   wSlow10Now,  "Detected by Lider"          },
+
+//    {E_MMR1C_NORESPONCE1,        0x20,    eSlowlyStop,  wStopWait,  "Laser(R) no response"      },
+    {E_MMR1C_NORESPONCE1,        OFF,    eSlowlyStop,  wStopWait,  "Laser(R) no response"         },
+    {E_LBI_HEARTBEAT1,         0x20,    eSlowlyStop,  wStopWait,  "LBI(R) no response"          },
+    {E_LBI_NOT_READY1,         0x20,    eSlowlyStop,  wStopWait,  "LBI(R) not ready"            },
+
+    {E_LBI_NPOSITION1,         0x20,    eSlowlyStop,  wStopWait,  "LBI(R) no N_Position"        },
+    {E_LBI_NO_CLIPAREA1,       0x20,    eSlowlyStop,  wStopWait,  "LBI(R) no clipping area"     },
+    {E_LBI_PARAMETER1,         0x20,    eSlowlyStop,  wStopWait,  "LBI(R) no parameter"         },
+    {E_MMR1C_WRONG_MODE1,        OFF,    eSlowlyStop,  wStopWait,  "Laser(R) not operation"       },
+//    {E_MMR1C_PACKET_LOST1,       0x20,    eSlowlyStop,  wStopWait,  "LBI(R) packet lost"        },
+    {E_MMR1C_PACKET_LOST1,       OFF,    eSlowlyStop,  wStopWait,  "LBI(R) packet lost"           },
+
+    {E_MMR1C_MOTOR1,             OFF,    eSlowlyStop,  wStopWait,  "Laser(R) Motor fault"         },
+    {E_MMR1C_IF_ERROR1,          OFF,    eSlowlyStop,  wStopWait,  "Laser(R) IF internal error"   },
+    {E_MMR1C_CONFIG1,            OFF,    eSlowlyStop,  wStopWait,  "Laser(R) Config error"        },
+    {E_MMR1C_TIMEOUT1,           OFF,    eSlowlyStop,  wStopWait,  "Laser(R) timeout"             },
+    {E_MMR1C_OTHER1,             OFF,    eSlowlyStop,  wStopWait,  "Laser(R) other error"         },
+	{E_MMR1C_BLINDNESS1,         0x11,   eSlowlyStop,  wNoAction,  "Laser(R) is blind"            },
+
+//    {E_MMR1C_NORESPONCE2,        0x20,    eSlowlyStop,  wStopWait,  "Laser(L) no response"      },
+    {E_MMR1C_NORESPONCE2,        OFF,    eSlowlyStop,  wStopWait,  "Laser(L) no response"         },
+    {E_LBI_HEARTBEAT2,         0x20,    eSlowlyStop,  wStopWait,  "LBI(L) no response"          },
+    {E_LBI_NOT_READY2,         0x20,    eSlowlyStop,  wStopWait,  "LBI(L) not ready"            },
+
+    {E_LBI_NPOSITION2,         0x20,    eSlowlyStop,  wStopWait,  "LBI(L) no N_Position"        },
+    {E_LBI_NO_CLIPAREA2,       0x20,    eSlowlyStop,  wStopWait,  "LBI(L) no clipping area"     },
+    {E_LBI_PARAMETER2,         0x20,    eSlowlyStop,  wStopWait,  "LBI(L) no parameter"         },
+    {E_MMR1C_WRONG_MODE2,        OFF,    eSlowlyStop,  wStopWait,  "Laser(L) not operation"       },
+//    {E_MMR1C_PACKET_LOST2,       0x20,    eSlowlyStop,  wStopWait,  "LBI(L) packet lost"        },
+    {E_MMR1C_PACKET_LOST2,       OFF,    eSlowlyStop,  wStopWait,  "LBI(L) packet lost"           },
+
+    {E_MMR1C_MOTOR2,             OFF,    eSlowlyStop,  wStopWait,  "Laser(L) Motor fault"         },
+    {E_MMR1C_IF_ERROR2,          OFF,    eSlowlyStop,  wStopWait,  "Laser(L) IF internal error"   },
+    {E_MMR1C_CONFIG2,            OFF,    eSlowlyStop,  wStopWait,  "Laser(L) Config error"        },
+    {E_MMR1C_TIMEOUT2,           OFF,    eSlowlyStop,  wStopWait,  "Laser(L) timeout"             },
+    {E_MMR1C_OTHER2,             OFF,    eSlowlyStop,  wStopWait,  "Laser(L) other error"         },
+	{E_MMR1C_BLINDNESS2,         0x11,   eSlowlyStop,  wNoAction,  "Laser(L) is blind"            },
+
+    // MACOM (Short Range Radar)
+    {E_TOUCH_SENSOR,           OFF,    eNoAction,   wNoAction,   "Touch sensor hit"             },
+
+    {E_SRR_DETECTED1,          0x11,    eRearBrake,  wSlow10Now,  "SRR(Front R) detected"       },
+    {E_SRR_DETECTED2,          0x11,    eRearBrake,  wSlow10Now,  "SRR(Front C) detected"       },
+    {E_SRR_DETECTED3,          0x11,    eRearBrake,  wSlow10Now,  "SRR(Front L) detected"       },
+    {E_SRR_DETECTED4,          0x11,    eRearBrake,  wSlow10Now,  "SRR(Rear) detected"          },
+
+    {E_SRR_NORESPONCE1,        0x20,    eSlowlyStop,   wStopWait,  "SRR(R) no response"           },
+    {E_SRR_TEMP_HIGH1,         0x20,    eSlowlyStop,   wNoAction,  "SRR(R) temp. high"            },
+    {E_SRR_VOLTAGE1,           0x20,    eSlowlyStop,   wNoAction,  "SRR(R) voltage error"         },
+    {E_SRR_SENSITIVITY1,       0x20,    eSlowlyStop,   wNoAction,  "SRR(R) low sensitivity"       },
+    {E_SRR_ADDRESS1,           0x20,    eSlowlyStop,   wNoAction,  "SRR(R) address failure"       },
+    {E_SRR_HARDWARE_FAILURE1,  0x20,    eSlowlyStop,   wNoAction,  "SRR(R) hardware fail"         },
+    {E_SRR_CALIBRATION_FAIL1,  0x20,    eSlowlyStop,   wNoAction,  "SRR(R) calibration fail"      },
+    {E_SRR_CAN_ERROR1,         0x20,    eSlowlyStop,   wNoAction,  "SRR(R) CAN error"             },
+    {E_SRR_BLOCKAGE1,          0x20,    eSlowlyStop,   wNoAction,  "SRR(R) blocked"               },
+    {E_SRR_OTHER1,             0x20,    eSlowlyStop,   wNoAction,  "SRR(R) self diagnosis"        },
+
+    {E_SRR_NORESPONCE2,        0x20,    eSlowlyStop,   wStopWait,  "SRR(C) no response"           },
+    {E_SRR_TEMP_HIGH2,         0x20,    eSlowlyStop,   wNoAction,  "SRR(C) temp. high"            },
+    {E_SRR_VOLTAGE2,           0x20,    eSlowlyStop,   wNoAction,  "SRR(C) voltage error"         },
+    {E_SRR_SENSITIVITY2,       0x20,    eSlowlyStop,   wNoAction,  "SRR(C) low sensitivity"       },
+    {E_SRR_ADDRESS2,           0x20,    eSlowlyStop,   wNoAction,  "SRR(C) address failure"       },
+    {E_SRR_HARDWARE_FAILURE2,  0x20,    eSlowlyStop,   wNoAction,  "SRR(C) hardware fail"         },
+    {E_SRR_CALIBRATION_FAIL2,  0x20,    eSlowlyStop,   wNoAction,  "SRR(C) calibration fail"      },
+    {E_SRR_CAN_ERROR2,         0x20,    eSlowlyStop,   wNoAction,  "SRR(C) CAN error"             },
+    {E_SRR_BLOCKAGE2,          0x20,    eSlowlyStop,   wNoAction,  "SRR(C) blocked"               },
+    {E_SRR_OTHER2,             0x20,    eSlowlyStop,   wNoAction,  "SRR(C) self diagnosis"        },
+
+    {E_SRR_NORESPONCE3,        0x20,    eSlowlyStop,   wStopWait,  "SRR(L) no response"           },
+    {E_SRR_TEMP_HIGH3,         0x20,    eSlowlyStop,   wNoAction,  "SRR(L) temp. high"            },
+    {E_SRR_VOLTAGE3,           0x20,    eSlowlyStop,   wNoAction,  "SRR(L) voltage error"         },
+    {E_SRR_SENSITIVITY3,       0x20,    eSlowlyStop,   wNoAction,  "SRR(L) low sensitivity"       },
+    {E_SRR_ADDRESS3,           0x20,    eSlowlyStop,   wNoAction,  "SRR(L) address failure"       },
+    {E_SRR_HARDWARE_FAILURE3,  0x20,    eSlowlyStop,   wNoAction,  "SRR(L) hardware fail"         },
+    {E_SRR_CALIBRATION_FAIL3,  0x20,    eSlowlyStop,   wNoAction,  "SRR(L) calibration fail"      },
+    {E_SRR_CAN_ERROR3,         0x20,    eSlowlyStop,   wNoAction,  "SRR(L) CAN error"             },
+    {E_SRR_BLOCKAGE3,          0x20,    eSlowlyStop,   wNoAction,  "SRR(L) blocked"               },
+    {E_SRR_OTHER3,             0x20,    eSlowlyStop,   wNoAction,  "SRR(L) self diagnosis"        },
+
+    {E_SRR_NORESPONCE4,        0x20,    eSlowlyStop,   wStopWait,  "SRR(Rear) no response"        },
+    {E_SRR_TEMP_HIGH4,         0x20,    eSlowlyStop,   wNoAction,  "SRR(Rear) temp. high"         },
+    {E_SRR_VOLTAGE4,           0x20,    eSlowlyStop,   wNoAction,  "SRR(Rear) voltage error"      },
+    {E_SRR_SENSITIVITY4,       0x20,    eSlowlyStop,   wNoAction,  "SRR(Rear) low sensitivity"    },
+    {E_SRR_ADDRESS4,           0x20,    eSlowlyStop,   wNoAction,  "SRR(Rear) address failure"    },
+    {E_SRR_HARDWARE_FAILURE4,  0x20,    eSlowlyStop,   wNoAction,  "SRR(Rear) hardware fail"      },
+    {E_SRR_CALIBRATION_FAIL4,  0x20,    eSlowlyStop,   wNoAction,  "SRR(Rear) calibration fail"   },
+    {E_SRR_CAN_ERROR4,         0x20,    eSlowlyStop,   wNoAction,  "SRR(Rear) CAN error"          },
+    {E_SRR_BLOCKAGE4,          0x20,    eSlowlyStop,   wNoAction,  "SRR(Rear) blocked"            },
+    {E_SRR_OTHER4,             0x20,    eSlowlyStop,   wNoAction,  "SRR(Rear) self diagnosis"     },
+
+    {E_SRBI_HEARTBEAT,         0x20,    eSlowlyStop,  wStopWait,  "SRBI no response"            },
+    {E_SRBI_NOT_READY,         0x20,    eSlowlyStop,  wStopWait,  "SRBI not ready"              },
+    {E_MMR1CODS_POWER_OFF,       0x20,    eSlowlyStop,  wStopWait,  "ODS power off"               },
+    {E_MMR1CODS_NOT_READY,       OFF,     eSlowlyStop,  wStopWait,   "MMR1C ODS not ready"          },
+
+    {E_POWER_RELAY_NO_WORK,    0x20,    eNoAction,    wNoAction,  "Power relay not work"        },
+    {E_POWER_RELAY_FAILURE,    0x20,    eNoAction,    wNoAction,  "Power relay failure"         },
+
+
+    {0, OFF,    eNoAction, wNoAction, ""},
+};
+
+sint16 ErrorTable_GetTableSize(void)
+{
+    return( (sint16)( (sizeof(ahsErrorTable) / sizeof(StructErrorTable)) - 1 ) );
+}
+
+
+StructErrorTable* ErrorTable_GetErrorTableAddress(void)
+{
+    return((StructErrorTable*)ahsErrorTable);
+}
+
+

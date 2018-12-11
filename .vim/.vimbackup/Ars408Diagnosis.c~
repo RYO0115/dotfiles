@@ -1,0 +1,394 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2009 Komatsu Ltd. All rights reserved.
+ * 
+ *    $RCSfile: Ars408Diagnosis.c,v $
+ *    $Revision: 1.1.1.1 $
+ *    $Author: tojima $
+ *    $Date: 2009/09/15 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Communication module with ARS408
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#include "ahscommon.h"
+#include "AhsTools.h"
+#include "ErrorManager.h"
+#include "WarningManager.h"
+#include "TruckInfo.h"
+#include "Course.h"
+#include "ModeManager.h"
+#include "ClippingAreaManager.h"
+#include "Ars408Diagnosis.h"
+#include "AppMain.h"
+#include "Ars408Manager.h"
+
+#include "RpcManager.h"
+#include "AppIfdef.h"
+
+
+#define _ARS408_DIAG_DEBUG_
+
+#ifdef  _ARS408_DIAG_DEBUG_
+    char arsDebugStr[128];
+#endif
+
+/**
+ * プライベート関数
+ */
+static bool Ars408Diagnosis_CheckChannel(void);
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+void Ars408Diagnosis_ReceiveError(
+    StructArs408 *pArs,   /**< */
+    const uint8 *msg         /**< */
+    )
+{
+    pArs->canComTimer = 0;
+    pArs->packetCounter++;
+
+	pArs->error.timeStamp       		= Tools_GetPtrToShortU(&msg[0]);
+	pArs->error.Status_Info1.byte       = Tools_GetPtrToShortU(&msg[2]);
+	pArs->error.Status_Info2.byte       = msg[4];
+	pArs->error.Status_Info3.byte       = msg[5];
+	pArs->error.Status_Info4.byte       = msg[6];
+
+
+    // LBIからエラーRPCを受信したら、LBIは起動したとする
+    // もしRPCを受信しなければ、CAN通信異常かLBIの電源異常
+    pArs->rbiStart = TRUE;
+
+    // ARS408計測準備がOKかどうか
+    Ars408_SetReady(pArs,TRUE);    // 準備OK
+/*
+    if( (pArs->error.Status_Info4 & 0x08) != 0x08 )
+    {
+        Ars408_SetReady(pArs,FALSE);    // まだ
+    }
+    else
+    {
+        Ars408_SetReady(pArs,TRUE);    // 準備OK
+    }
+*/
+	#ifdef  _ARS408_DIAG_DEBUG_
+	sprintf(arsDebugStr,"Temp_Error:%x, Tempo Error:%x, Persistent_Error:%x, Volt_Error:%x",
+			pArs->error.Status_Info1.bit.RadarState_Temperature_Error,
+			pArs->error.Status_Info2.bit.RadarState_Temporary_Error,
+			pArs->error.Status_Info1.bit.RadarState_Persistent_Error,
+			pArs->error.Status_Info2.bit.RadarState_Voltage_Error);
+	CanDebugPrintf(arsDebugStr);
+	#endif
+
+}
+
+//---------------------------------------------------------------------------
+/**
+ * RBI起動チェック
+ * @retval TRUE  LBIが起動した
+ * @retval FALSE LBIからまったくメッセージを受信していない（起動してない）
+ */
+//---------------------------------------------------------------------------
+bool Ars408Diagnosis_CheckRbiReady(const StructArs408 *pArs)
+{
+	bool ret = TRUE;
+
+	if( pArs->valid == TRUE )
+	{
+		if( pArs->rbiStart == FALSE )
+		{
+			ret = FALSE;
+			Error_Set(E_RBI_NOT_READY3);
+		}
+		else
+		{
+			// do nothing;
+		}
+	}
+	else
+	{
+		// do nothing
+	}
+
+	return(ret);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * Safety - LBIの通信チェック
+ * @retval TRUE  正常
+ * @retval FALSE 1秒以上通信が途切れた
+ */
+//---------------------------------------------------------------------------
+bool Ars408Diagnosis_CheckSafetyRbiCommunication(const StructArs408 *pArs)
+{
+	bool ret = TRUE;
+
+	if( pArs->valid == TRUE )
+	{
+		// LBI-Safety
+		if( pArs->canComTimer > T_1SEC )
+		{
+			ret = FALSE;
+
+			Error_Set(E_RBI_HEARTBEAT3);
+		}
+		else
+		{
+			// do nothing
+		}
+	}
+	else
+    {
+        // do nothing
+    }
+
+	return(ret);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * RBIが走行コンからNPOSITIONを受信したかどうか
+ * @retval TRUE  正常
+ * @retval FALSE 1秒以上NPOSITIONを受信していない
+ */
+//---------------------------------------------------------------------------
+bool Ars408Diagnosis_CheckRbiNposition(const StructArs408 *pArs)
+{
+    bool ret = TRUE;
+/*
+    if( pArs->valid == TRUE )
+    {
+        // 通信異常状態が1秒以上続いたら、エラーとする
+        if( ( pArs->error.lbiError.bitf.noNposition == TRUE ) 
+//         && ( TruckInfo_GetMovingStatus() == MOVE_FORWARD ) 
+          )
+        {
+            ret = FALSE;
+            
+			if( pArs->pos == posLuxRight)
+            {
+                Error_Set(E_RBI_NPOSITION3);
+            }
+            else if( pArs->pos == posLuxLeft)
+            {
+                Error_Set(E_RBI_NPOSITION3);
+            }
+            else
+            {
+                // do nothing
+            }
+		}
+        else
+        {
+            // do nothing;
+        }
+	}
+    else
+    {
+        // do nothing
+    }
+*/
+    return(ret);
+}
+
+
+
+//---------------------------------------------------------------------------
+/**
+ * Arsの動作モードチェック
+ * @retval TRUE  Operation Mode（ARS408起動中）
+ * @retval FALSE Suspend Mode  （ARS408休止中）
+ */
+//---------------------------------------------------------------------------
+bool Ars408Diagnosis_CheckArsOperationMode(const StructArs408 *pArs)
+{
+	return(TRUE);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * RBI - Arsの通信チェック
+ * @retval TRUE (正常）
+ * @retval FALSE
+ */
+//---------------------------------------------------------------------------
+bool Ars408Diagnosis_CheckRbiArsCommunication(const StructArs408 *pArs)
+{
+	bool ret = TRUE;
+	bool noCommPowerCycleFlag;
+
+	noCommPowerCycleFlag = FALSE;
+
+	if( pArs->valid == TRUE )
+	{
+		// Operation中に通信異常状態が続いたら、エラーとする
+		if( Ars408_IsReady(pArs) == TRUE )
+		{
+			if( (pArs->error.Status_Info4.byte & 0x08) != 0x08 )   // Radar-RBI間の通信異常
+			{
+				ret = FALSE;
+				Error_Set(E_ARS408_NORESPONCE);  // 0xE51
+			}
+			else // 通信正常
+			{
+			}
+		}
+		//NoCommでPowerCycleをおこなった場合は、Errorを発報し続ける
+		//else if( noCommPowerCycleFlag==TRUE )
+		//{
+		//	ret = FALSE;
+		//	Error_Set(E_ARS408ODS_NOT_READY);
+		//}
+		else
+		{
+			//do nothing
+		}
+	}
+	else
+	{
+		// do nothing
+	}
+	return(ret);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * RBI - Arsの通信チェック
+ * @retval TRUE （正常）
+ * @retval FALSE
+ */
+//---------------------------------------------------------------------------
+bool Ars408Diagnosis_CheckTrackMsgCommunication(StructArs408 *pArs)
+{
+    bool ret = TRUE;
+    
+	if( pArs->valid == TRUE )
+	{
+		if( pArs->trackRpcTimer > T_1SEC )
+		{
+			ret = FALSE;
+
+			Error_Set(E_ARS408_PACKET_LOST);
+		}
+		else
+		{
+			// do nothing
+		}
+
+		pArs->trackRpcTimer++;
+		if( pArs->trackRpcTimer > T_10SEC )
+		{
+			pArs->trackRpcTimer = T_10SEC;
+        }
+        else
+        {
+            //
+        }
+
+    }
+    else
+    {
+        // do nothing
+    }
+
+    return(ret);
+}
+
+//---------------------------------------------------------------------------
+/**
+ *ARS408の自己診断
+ * @retval TRUE （正常）
+ * @retval FALSE
+ */
+//---------------------------------------------------------------------------
+bool Ars408Diagnosis_SelfDiagnosisError1(const StructArs408 *pArs)
+{
+	bool   ret = TRUE;
+
+	if( pArs->valid == TRUE )
+	{
+		// エラーダイアグノシスコードの解釈
+
+
+		if( pArs->error.Status_Info1.bit.RadarState_Temperature_Error  == ON ) // RadarState_Temperature Error
+		{ 
+		    Error_Set(E_ARS408_TEMPERATURE_ERROR);
+		    ret = FALSE;
+		}
+		else
+		{
+		     // do nothing
+		}
+
+		if( pArs->error.Status_Info1.bit.RadarState_Persistent_Error  == ON ) // RadarState_Internal Error
+		{ 
+		    Error_Set(E_ARS408_INTERNAL_ERROR);
+		    ret = FALSE;
+		}
+		else
+		{
+		     // do nothing
+		}
+
+
+		if( pArs->error.Status_Info2.bit.RadarState_Voltage_Error == ON )   // Voltage Error
+		{ 
+		    Error_Set(E_ARS408_VOLTAGE_ERROR);
+		    ret = FALSE;
+		}
+		else
+		{
+		     // do nothing
+		}
+
+		if( pArs->error.Status_Info2.bit.RadarState_Temporary_Error == ON )  // Temporary_error
+		{
+			Error_Set(E_ARS408_TEMPORARY_ERROR);
+			ret = FALSE;
+		}
+		else
+		{
+			 // do nothing
+		}
+
+
+    }
+    else
+    {
+        //
+    }
+    
+    return(ret);
+}
+
+
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+// プライベート関数
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+static bool Ars408Diagnosis_CheckChannel(void)
+{
+    bool ret;
+
+    Error_Set(E_SOFTWARE_EXCEPTION3);
+    ret = FALSE;
+    
+    return(ret);
+}
+
+/* end of file */

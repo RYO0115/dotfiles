@@ -1,0 +1,121 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2005 Komatsu Ltd. All rights reserved.
+ * 
+ * $RCSfile: MonSfOdsControl.h,v $
+ * $Revision: 1.1.1.1 $
+ * $Author: tojima $
+ * $Date: 2005/07/06 06:36:19 $
+ * $State: Exp $
+ *
+ * @brief: Safety Controller
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#include "ahscommon.h"
+#include "MonCtrl.h"
+#include "DataTypes.h"
+#include "AppMain.h"
+#include "AhsTools.h"
+
+#include "MonSfOdsControl.h"
+#include "ClippingAreaManager.h"
+#include "OdsScope.h"
+#include "TruckInfo.h"
+
+#include "Mmr1cManager.h"
+
+
+/**
+ * 送信データの構造定義
+ */
+typedef struct{
+	uint16  timestamp;  // タイムスタンプ
+	uint16  id;         // データID
+	sint16  motorRef;
+	sint16  motorAngle;
+	sint16  motorPot;
+	uint8   clipAreaNum;
+	uint8   effRange;
+	uint8   maxRange;
+	uint8   roadType;
+	uint16  deltaIndex;
+} MonRpcOdsControlMsg;
+
+/**
+ */
+typedef struct{
+	MonRpcOdsControlMsg  data; // データメッセージ構造体
+	StructMonCtrl  ctrl;       // 送信コントロールクラス
+} StructMonOdsCtrlData;
+ 
+/**
+ * インスタンス定義
+ */
+static StructMonOdsCtrlData monods;
+
+//---------------------------------------------------------------------------
+/**
+ * 初期化
+ */
+//---------------------------------------------------------------------------
+void MonSfOdsControl_Init( void )
+{
+	MonCtrl_Init( &monods.ctrl, 
+				  (sint16)sizeof( MonRpcOdsControlMsg ),
+				  (uint8*)&monods.data,
+				  MonSfOdsControl_SetData
+				 );
+}
+
+//---------------------------------------------------------------------------
+/**
+ * メイン
+ */
+//---------------------------------------------------------------------------
+void MonSfOdsControl_Main( void )
+{
+	MonCtrl_Main( &monods.ctrl );
+}
+
+//---------------------------------------------------------------------------
+/**
+ * データのセット
+ */
+//---------------------------------------------------------------------------
+void MonSfOdsControl_SetData( void )
+{
+	monods.data.timestamp = (uint16)AdtMain_GetMainCounter();
+	monods.data.id		  = SF_ODS_CONTROL;
+
+
+	monods.data.motorAngle = 0;//RevolvingUnit_GetCurrentAngle();
+	monods.data.motorRef   = 0;//RevolvingUnit_GetTargetAngle();
+	monods.data.motorPot   = 0;//(sint16)MotorPot_GetVolt();
+
+//	  monods.data.clipAreaNum = (uint8)ClippingArea_GetAreaNum();
+	monods.data.clipAreaNum = (uint8)Mmr1cManager_GetRbiClippingAreaNum( posMmr1cRight );
+	monods.data.effRange    = (uint8)(OdsScope_GetEffectRange()/1000);	// [m]
+	monods.data.maxRange    = (uint8)OdsScope_GetSearchLimit();
+	monods.data.roadType    = (uint8)OdsScope_GetRoadType();
+	monods.data.deltaIndex  = (uint16)(OdsScope_GetTargetIndex() - TruckInfo_GetCurrentIndex() );
+	
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 送信要求コマンドの受信
+ */
+//---------------------------------------------------------------------------
+void MonSfOdsControl_ReceiveSendReq( uint8 dest, uint8* buf )
+{
+	sint16 interval;
+	
+	interval = Tools_GetPtrToShortS( &buf[0] );
+
+	MonCtrl_SendMonData( &monods.ctrl, dest, interval );
+}
+
+

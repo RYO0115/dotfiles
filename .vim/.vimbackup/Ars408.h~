@@ -1,0 +1,173 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2009 Komatsu Ltd. All rights reserved.
+ * 
+ *    $RCSfile: Lux8K.h,v $
+ *    $Revision: 1.1.1.1 $
+ *    $Author: tojima $
+ *    $Date: 2009/09/15 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Communication module with ARS408
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#ifndef ___ARS408_8K_H___
+#define ___ARS408_8K_H___
+
+#include "kcommon.h"
+#include "ContiCommon.h"
+#include "ContiRpcDef.h"
+
+/**
+ *
+ */
+typedef struct{
+	sint32 xpos;             /**< グローバル座標 [mm] */
+	sint32 ypos;             /**< [mm] */
+	sint32 range;            /**< [mm] */
+	sint16 speed;            /**< 速度 [0.1m/s] */
+	sint16 zone;             /**<      */
+	uint8  id;               /**< object ID */
+	sint8  power;            /**<  */
+} StructArs408TargetInfo;
+
+/**
+ *
+ */
+typedef struct{
+
+	// RPC受信バッファ
+	StructStatusMsgARS408     error;
+	StructTargetMsgARS408     object;
+	StructTargetMsgARS408     object_buffer;
+
+	// クリッピングオブジェクト用バッファ
+	StructArs408TargetInfo target[MAX_CONTI_OBJECTS];
+
+	StructPointDef basePos;      /**< 車両原点からのレーダの位置 */
+	StructPointDef globalPos;    /**< 車両原点からのレーダの位置 */
+
+	sint16  baseHeight;          /**< [mm] */
+	sint16  wheelBase;           /**< [mm] */
+
+	sint32 baseX;               /**< 車両原点からのレーダの位置[mm] */
+	sint32 baseY;               /**< 車両原点からのレーダの位置[mm] */
+	sint16  baseAngle;           /**< 基本取り付け角度オフセット [2pi/65536] */
+	float32 base_cs;			 /**< レーダ取付角のCOS成分*/
+	float32 base_sn;			 /**< レーダ取付角のSIN成分*/
+
+	float32 cs;                  /**< レーダのグローバル方位角のCOS成分 */
+	float32 sn;
+	sint32  truckX;              /** [mm] */
+	sint32  truckY;              /** [mm] */
+
+	bool    valid;               /**< ARS408が有効かどうか */
+	sint16  msgCounter;          /**< */
+	bool    comValid;            /**< */
+	bool    updated;             /**< */
+
+	bool    arsStart;            /**< ARS408が起動したかどうか */
+	bool    lbiStart;            /**< LBIが起動したかどうか */
+
+	bool	packetLostFlag;		 /**< Packetロストしたかどうか */
+	//bool	packetAllSetFlag;	 /**< Packetロストしたかどうか */
+
+	sint16  canComTimer;         /**< RBIと安全コンの通信タイマー */
+	sint16  trackRpcTimer;       /**< RBIと安全コンのターゲット情報のタイマー */
+
+	sint16  targetNum;           /**< RBIから送信される検知オブジェクト数 */
+
+	sint32  closestRange;        /**< 検知物体のうち、最短距離 */
+	sint16  closestIndex;        /**< 最短距離のターゲットのインデックス */
+
+	bool    healthy;
+
+	uint16  packetCounter;       /**< LBIと安全コン間のパケット数(0x8B32) */
+
+
+} StructArs408;
+
+
+/**
+ * 初期化
+ */
+extern void Ars408_Init(
+     StructArs408 *pArs,      /**< Ars408オブジェクトのポインタ */
+	 bool flag,            /**< 使うか使わないか */
+     sint16 xpos,          /**< リアアクスルからのレーダの位置[mm] */
+     sint16 ypos,          /**< 車両中央からのレーダの位置[mm]     */
+     sint16 angle          /**< 基本取り付け角度オフセット [2pi/65536] */
+     );
+
+/**
+ * メイン
+ */
+extern void Ars408_PreMain(
+     StructArs408 *pArs,      /**< Ars408オブジェクトのポインタ */
+      sint32 truckX,         /**< 車両の位置 [mm] */
+      sint32 truckY,         /**< 車両の位置 [mm] */
+      sint16 truckDir,       /**< 車両の方位角 [1/65536] */
+      float32  cs,           /**< 方位角のCOS成分 */
+      float32  sn            /**< 方位角のSIN成分 */
+      );
+
+extern void Ars408_Main(
+      StructArs408 *pArs      /**< Arsオブジェクトのポインタ */
+      );
+      
+extern void Ars408_PostMain(
+      StructArs408 *pArs      /**< Arsオブジェクトのポインタ */
+      );
+
+/**
+ *
+ */
+void Ars408_ReceiveClippedTargetMsg(
+      StructArs408 *pArs,   /**< */
+      const uint8 *msg         /**< */
+      );
+
+/**
+ *
+ */
+void CopyObjectDataFromBuffer(
+		StructTargetMsgARS408* completeData,
+		StructTargetMsgARS408* buffer
+		);
+
+/**
+ *
+ */
+extern StructArs408TargetInfo* Ars408_GetTrackData(
+    StructArs408 *pArs,   /**< */
+    sint16 index       /**< */
+    );
+
+/**
+ *
+ */
+extern void Ars408_SetBaseArs408XPos(
+     StructArs408 *pArs,  /**<  */
+     sint32 x          /**<  */
+     );
+extern void Ars408_SetBaseArs408YPos(
+     StructArs408 *pArs,  /**<  */
+     sint32 y          /**<  */
+     );
+extern void Ars408_SetBaseArs408Theta(
+     StructArs408 *pArs,  /**<  */
+     sint16 theta      /**<  */
+     );
+
+extern bool Ars408_IsReady(
+     const StructArs408 *pArs
+     );
+
+void Ars408_SetReady(StructArs408 *pArs, bool flag);
+
+#endif // ___LUX_8K_H___
+

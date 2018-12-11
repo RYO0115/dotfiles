@@ -1,0 +1,1433 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2005 Komatsu Ltd. All rights reserved.
+ * 
+ *  $RCSfile: TruckConfigTable.c,v $
+ * $Revision: 1.1.1.1 $
+ *   $Author: nishijima $
+ *     $Date: 2008/07/14 $
+ *    $State: Exp $
+ *
+ *    @brief: Truck Type Control
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#include "ahscommon.h"
+#include "AhsTools.h"
+#include "TruckConfigTable.h"
+#include "TruckType.h"
+
+#include "HD785Dimension.h"
+#include "HD785_Table.h"
+
+#include "ErrorManager.h"
+#include "ModeManager.h"
+#include "RpcManager.h"
+#include "ControllerType.h"
+#include "AppNvram.h"
+#include "TruckIfdef.h"
+
+#include "AhsAuxDevice.h"
+
+
+typedef struct {
+    float32   wheelbase;
+    float32   emptyVehicleWeight;
+    float32   grossVehicleWeight;
+    float32   unsprungWeight;
+    float32   maxLoadWeight;
+    float32   rollingRadius;
+    float32   maxSteering;
+    sint32    gpsAntennaX;
+    sint32    gpsAntennaY;
+    sint32    gpsAntennaZ;
+    float32   frontScale;
+    float32   rearScale;
+    float32   stArmOffset;
+    float32   stArmLength;
+    float32   rearTyreOffset;
+    float32   pitchX;
+    float32   pitchY;
+    float32   rollX;
+    float32   rollY;
+	float32   regTargetDistance;
+    float32   regX;
+    float32   regY;
+    //float32   stLink_A;
+    //float32   stLink_B;
+    //float32   stLink_C;
+    //float32   stLink_Alpha;
+    //float32   stLink_Bata;
+    float32   clippingArea;
+    float32   acc3DistanceFromRearCenter[4];
+    float32   acc3SideRadarOffset[4];
+    float32   acc3SideRadarAngle[4];
+    float32   *retardTableFrontLow;
+    float32   *retardTableFrontHigh;
+    float32   *retardTableRearLow;
+    float32   *retardTableRearHigh;
+    //sint32    frontBrakeMax;
+    //sint32    frontBrakeMin;
+    //sint32    rearBrakeMax;
+    //sint32    rearBrakeMin;
+    sint16    *positiveAccelGain0Deg;
+    sint16    *positiveAccelGain1Deg;
+    sint16    *positiveAccelGain2Deg;
+    sint16    *positiveAccelGain3Deg;
+    sint16    *negativeAccelGain0Deg;
+    sint16    *negativeAccelGain1Deg;
+    sint16    *negativeAccelGain2Deg;
+    sint16    *negativeAccelGain3Deg;
+    float32   BrakeForceNormalGain;
+    float32   BrakeForcePaddockGain;
+    float32   BrakeForceSlopelGain;
+    float32   gainKH_P;
+    float32   gainKH_D;
+    float32   gainKH_I;
+    float32   gainKL_P;
+    float32   gainKL_D;
+    float32   gainKL_I;
+    float32   gainK_ST_BEFORE;
+    float32   gainK_HP_ST;
+    float32   gainADJ_GAIN;
+
+	float32   gainScsK1;
+	float32   gainScsK2;
+	float32   gainScsK3;
+    
+    sint16    LuxDistanceFromRearAxleR;
+    sint16    LuxDistanceFromRearAxleL;
+    sint16    LuxSideOffsetR;     
+    sint16    LuxSideOffsetL;     
+    sint16    LuxAngleOffsetR;
+    sint16    LuxAngleOffsetL;
+    sint16    LuxHeight;
+
+    sint16    MacomFrontDistanceFromRearAxleR;
+    sint16    MacomFrontSideOffsetR;
+    sint16    MacomFrontAngleOffsetR;
+
+    sint16    MacomFrontDistanceFromRearAxleC;
+    sint16    MacomFrontSideOffsetC;
+    sint16    MacomFrontAngleOffsetC;
+
+    sint16    MacomFrontDistanceFromRearAxleL;
+    sint16    MacomFrontSideOffsetL;
+    sint16    MacomFrontAngleOffsetL;
+
+    sint16    MacomRearDistanceFromRearAxleC;
+    sint16    MacomRearSideOffsetC;
+    sint16    MacomRearAngleOffsetC;
+
+    sint16    Ars408FrontDistanceFromRearAxleC;
+    sint16    Ars408FrontSideOffsetC;
+    sint16    Ars408FrontAngleOffsetC;
+
+    sint16    rearToFront;
+    sint16    vehicleWidth;
+    sint16    bodyWidth;
+    
+    sint16    courseAllowanceNormal;
+    sint16    courseAllowanceNarrow;
+    sint16    courseAllowanceWide;
+    
+} StructTruckDim;
+
+static StructTruckDim    aht;
+static uint8   truckModelNV;
+static uint8   truckModelFinal;
+static bool    truckModelReady;
+static bool    truckModelError;
+
+static sint16  odsType;
+
+static const st_VariableInterpFloat *gainKpreBack; /* steering gain table */
+static const st_VariableInterpFloat *gainKPreSlow; /* steering gain table */
+static const st_VariableInterpFloat *gainKPreHighE; /* steering gain table */
+static const st_VariableInterpFloat *gainKPreHighL; /* steering gain table */
+
+static const st_InterpFloat *steerSpeedToCurrent; /* steering speed to valve current table */
+
+/**
+ * プライベート関数
+ */
+static void TruckConfigTable_SetDimension(void);
+
+
+//---------------------------------------------------------------------------
+/**
+ * 初期化
+ */
+//---------------------------------------------------------------------------
+void TruckConfigTable_Init(void)
+{
+	// 自車NV-RAMのTruckTypeの取り込み
+	truckModelNV = (uint8)AppNvram_GetTruckType();
+	
+#if defined(_DRIVE_CONTROLLER)
+    odsType = ESRX3_LUXX2_SRRX4;
+#elif defined(_SAFETY_CONTROLLER) ///#if defined(_DRIVE_CONTROLLER)
+	odsType = AppNvram_GetOdsType();
+#endif ///#elif defined(_SAFETY_CONTROLLER)
+
+	truckModelFinal = TYPE_NONE;
+	truckModelReady = OFF;
+	truckModelError = ON;
+
+	// NV-RAMの設定で初期化する
+	TruckConfigTable_SetDimension();
+
+}
+
+//---------------------------------------------------------------------------
+/**
+ * メイン処理
+ */
+//---------------------------------------------------------------------------
+void TruckConfigTable_Main(void)
+{
+#ifdef _DEBUG_TRUCK_TABLE
+    char str[128];
+#endif ///#ifdef _DEBUG_TRUCK_TABLE
+
+	// NV-RAMに書き込まれていたTypeが不明な車両だった
+	if(truckModelError == ON) { Error_Set(E_TRUCK_TYPE_WRONG); }
+
+	// すでに値が設定されていれば、リターンする
+	if(truckModelReady == ON)
+	{
+		// NV-RAMに書き込まれていたTypeが最終的なTypeと違っていた
+		if(truckModelNV != truckModelFinal) { Error_Set(E_TRUCK_TYPE_WRONG); }
+
+		return;
+	}
+	else
+	{
+		// トラックタイプが決定する前にAutoモードになったときはエラーにする
+		// ２重チェックになるが、念のためチェックする
+		if(Mode_GetCurrentMode() == modeAuto) { Error_Set(E_TRUCK_TYPE_WRONG); }
+	}
+
+	if(TruckType_Ready() == ON)
+	{
+		// トラックタイプ（モデル）の取り込み
+		truckModelFinal = TruckType_Get();
+
+		// フラグをONにする
+		truckModelReady = ON;
+
+#ifdef _DEBUG_TRUCK_TABLE
+	sprintf(str,"Dimension Set : %d, ready=%d",truckModel,truckModelReady);
+	CanDebugPrintf(str);
+#endif ///#ifdef _DEBUG_TRUCK_TABLE
+	}
+
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 
+ */
+//---------------------------------------------------------------------------
+bool TruckConfigTable_IsConfigReady(void)
+{
+	return(truckModelReady);
+}
+
+/**
+ * Wheelbase
+ */
+//---------------------------------------------------------------------------
+float32 AHT_Wheelbase(void)
+{
+	return(aht.wheelbase);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * Empty Vehicle Weight
+ */
+//---------------------------------------------------------------------------
+float32 AHT_EVW(void)
+{
+	return(aht.emptyVehicleWeight);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * Gross Vehicle Weight
+ */
+//---------------------------------------------------------------------------
+float32 AHT_GVW(void)
+{
+	return(aht.grossVehicleWeight);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * Unsprung Weight
+ */
+//---------------------------------------------------------------------------
+float32 AHT_UnsprungWeight(void)
+{
+	return(aht.unsprungWeight);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * Maximum Load Weight
+ */
+//---------------------------------------------------------------------------
+float32 AHT_MaxLoadWeight(void)
+{
+	return(aht.maxLoadWeight);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * Rolling Radius
+ */
+//---------------------------------------------------------------------------
+float32 AHT_RollingRadius(void)
+{
+	return(aht.rollingRadius);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * Max Steering [rad]
+ */
+//---------------------------------------------------------------------------
+float32 AHT_MaxSteering(void)
+{
+	return(aht.maxSteering);
+}
+//---------------------------------------------------------------------------
+/**
+ * GPS ANTENNA X
+ */
+//---------------------------------------------------------------------------
+sint32 AHT_GpsAnntennaX(void)
+{
+#if defined(_DRIVE_CONTROLLER)
+	return(aht.gpsAntennaX + DnNvram_GetGpsAntennaX());
+#elif defined(_SAFETY_CONTROLLER) ///#if defined(_DRIVE_CONTROLLER)
+	return(aht.gpsAntennaX);
+#endif ///#elif defined(_SAFETY_CONTROLLER)
+}
+
+//---------------------------------------------------------------------------
+/**
+ * GPS ANTENNA Y
+ */
+//---------------------------------------------------------------------------
+sint32 AHT_GpsAnntennaY(void)
+{
+#if defined(_DRIVE_CONTROLLER)
+	return(aht.gpsAntennaY + DnNvram_GetGpsAntennaY());
+#elif defined(_SAFETY_CONTROLLER) ///#if defined(_DRIVE_CONTROLLER)
+	return(aht.gpsAntennaY);
+#endif ///
+}
+
+//---------------------------------------------------------------------------
+/**
+ * GPS ANTENNA Z
+ */
+//---------------------------------------------------------------------------
+sint32 AHT_GpsAnntennaZ(void)
+{
+#if defined(_DRIVE_CONTROLLER)
+	return(aht.gpsAntennaZ + DnNvram_GetGpsAntennaZ());
+#elif defined(_SAFETY_CONTROLLER) ///#if defined(_DRIVE_CONTROLLER)
+	return(aht.gpsAntennaZ);
+#endif ///#elif defined(_SAFETY_CONTROLLER)
+}
+
+//---------------------------------------------------------------------------
+/**
+ * GPS ANTENNA X (BASE)
+ */
+//---------------------------------------------------------------------------
+sint32 AHT_GpsAnntennaX_BASE(void)
+{
+	return(aht.gpsAntennaX);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * GPS ANTENNA Y (BASE)
+ */
+//---------------------------------------------------------------------------
+sint32 AHT_GpsAnntennaY_BASE(void)
+{
+	return(aht.gpsAntennaY);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * GPS ANTENNA Z (BASE)
+ */
+//---------------------------------------------------------------------------
+sint32 AHT_GpsAnntennaZ_BASE(void)
+{
+	return(aht.gpsAntennaZ);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * パルスカウンタ→車速への係数（前輪）
+ */
+//---------------------------------------------------------------------------
+float32 AHT_FrontScale(void)
+{
+	return(aht.frontScale);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * パルスカウンタ→車速への係数（後輪）
+ */
+//---------------------------------------------------------------------------
+float32 AHT_RearScale(void)
+{
+	return(aht.rearScale);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ステアリング左右アーム取り付け距離
+ */
+//---------------------------------------------------------------------------
+float32 AHT_StArmOffset(void)
+{
+	return(aht.stArmOffset);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ステアリング左右アーム長さ
+ */
+//---------------------------------------------------------------------------
+float32 AHT_StArmLength(void)
+{
+	return(aht.stArmLength);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 後輪の左右タイヤ位置
+ */
+//---------------------------------------------------------------------------
+float32 AHT_RearTyreOffset(void)
+{
+	return(aht.rearTyreOffset);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ピッチセンサの取り付け位置 X [mm]
+ */
+//---------------------------------------------------------------------------
+float32 AHT_X_Pitch(void)
+{
+	return(aht.pitchX);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ピッチセンサの取り付け位置 Y [mm]
+ */
+//---------------------------------------------------------------------------
+float32 AHT_Y_Pitch(void)
+{
+	return(aht.pitchY);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ロールセンサの取り付け位置 X [mm]
+ */
+//---------------------------------------------------------------------------
+float32 AHT_X_Roll(void)
+{
+	return(aht.rollX);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ロールセンサの取り付け位置 Y [mm]
+ */
+//---------------------------------------------------------------------------
+float32 AHT_Y_Roll(void)
+{
+	return(aht.rollY);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * REGセンサターゲット距離(デフォルト) [mm]
+ */
+//---------------------------------------------------------------------------
+float32 AHT_REG_TargetDistance(void)
+{
+	return(aht.regTargetDistance);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * REGセンサの取り付け位置 X [mm]
+ */
+//---------------------------------------------------------------------------
+float32 AHT_X_REG(void)
+{
+	return(aht.regX);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * REGセンサの取り付け位置 Y [mm]
+ */
+//---------------------------------------------------------------------------
+float32 AHT_Y_REG(void)
+{
+	return(aht.regY);
+}
+
+////---------------------------------------------------------------------------
+///**
+// * ステアリングリンクAのZ平面上の長さ[m]
+// */
+////---------------------------------------------------------------------------
+//float32 AHT_StLink_A(void)
+//{
+//	return(aht.stLink_A);
+//}
+//
+////---------------------------------------------------------------------------
+///**
+// * ステアリングリンクBのZ平面上の長さ[m]
+// */
+////---------------------------------------------------------------------------
+//float32 AHT_StLink_B(void)
+//{
+//	return(aht.stLink_B);
+//}
+//
+////---------------------------------------------------------------------------
+///**
+// * ステアリングリンクCのZ平面上の長さ[m]
+// */
+////---------------------------------------------------------------------------
+//float32 AHT_StLink_C(void)
+//{
+//	return(aht.stLink_C);
+//}
+//
+////---------------------------------------------------------------------------
+///**
+// * 直進時のポテンショ角度α[rad]
+// */
+////---------------------------------------------------------------------------
+//float32 AHT_StLink_Alpha(void)
+//{
+//	return(aht.stLink_Alpha);
+//}
+//
+////---------------------------------------------------------------------------
+///**
+// * 直進時のβ(Right),β(Left)の角度[rad]
+// */
+////---------------------------------------------------------------------------
+//float32 AHT_StLink_Bata(void)
+//{
+//	return(aht.stLink_Bata);
+//}
+
+//---------------------------------------------------------------------------
+/**
+ * ODS クリッピングエリア基本幅 [mm]
+ */
+//---------------------------------------------------------------------------
+float32 AHT_ClippingArea(void)
+{
+	return(aht.clippingArea);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ODS レーダの取り付け位置に関する定数定義 [mm]
+ */
+//---------------------------------------------------------------------------
+float32 AHT_OdsDistanceFromRearCenter(sint16 ch)
+{
+	if( ( 0 <= ch ) && ( ch < 4 ) )
+	{
+		return(aht.acc3DistanceFromRearCenter[ch]);
+	}
+	else
+	{
+		return(0);
+	}
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ODS レーダの取り付け位置に関する定数定義 [mm]
+ */
+//---------------------------------------------------------------------------
+float32 AHT_OdsSideRadarOffset(sint16 ch)
+{
+	if( ( 0 <= ch ) && ( ch < 4 ) )
+	{
+		return(aht.acc3SideRadarOffset[ch]);
+	}
+	else
+	{
+		return(0);
+	}
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ODS レーダの取り付け位置に関する定数定義 [deg]
+ */
+//---------------------------------------------------------------------------
+float32 AHT_OdsSideRadarAngle(sint16 ch)
+{
+	if( ( 0 <= ch ) && ( ch < 4 ) )
+	{
+		return(aht.acc3SideRadarAngle[ch]);
+	}
+	else
+	{
+		return(0);
+	}
+}
+
+////---------------------------------------------------------------------------
+///**
+// * フロントブレーキ最大電流
+// */
+////---------------------------------------------------------------------------
+//sint32 AHT_GetFrontBrakeMax(void)
+//{
+//	return(aht.frontBrakeMax);
+//}
+//
+////---------------------------------------------------------------------------
+///**
+// * フロントブレーキ最小電流
+// */
+////---------------------------------------------------------------------------
+//sint32 AHT_GetFrontBrakeMin(void)
+//{
+//	return(aht.frontBrakeMin);
+//}
+//
+////---------------------------------------------------------------------------
+///**
+// * リアブレーキ最大電流
+// */
+////---------------------------------------------------------------------------
+//sint32 AHT_GetRearBrakeMax(void)
+//{
+//	return(aht.rearBrakeMax);
+//}
+//
+////---------------------------------------------------------------------------
+///**
+// * リアブレーキ最小電流
+// */
+////---------------------------------------------------------------------------
+//sint32 AHT_GetRearBrakeMin(void)
+//{
+//	return(aht.rearBrakeMin);
+//}
+
+//---------------------------------------------------------------------------
+/**
+ * リターダテーブル（リターダ能力）のアドレス(FrontHigh)
+ */
+//---------------------------------------------------------------------------
+float32 *AHT_GetRetardBrakeFrontHigh(void)
+{
+	return(aht.retardTableFrontHigh);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * リターダテーブル（リターダ能力）のアドレス(FrontLow)
+ */
+//---------------------------------------------------------------------------
+float32 *AHT_GetRetardBrakeFrontLow(void)
+{
+	return(aht.retardTableFrontLow);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * リターダテーブル（リターダ能力）のアドレス(RearHigh)
+ */
+//---------------------------------------------------------------------------
+float32 *AHT_GetRetardBrakeRearHigh(void)
+{
+	return(aht.retardTableRearHigh);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * リターダテーブル（リターダ能力）のアドレス(RearLow)
+ */
+//---------------------------------------------------------------------------
+float32 *AHT_GetRetardBrakeRearLow(void)
+{
+	return(aht.retardTableRearLow);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * P_ACCELゲイン(傾斜角0deg)テーブルのアドレス
+ */
+//---------------------------------------------------------------------------
+sint16 *AHT_GetPositiveAccelGain0Deg(void)
+{
+	return(aht.positiveAccelGain0Deg);
+}
+//---------------------------------------------------------------------------
+/**
+ * P_ACCELゲイン(傾斜角1deg)テーブルのアドレス
+ */
+//---------------------------------------------------------------------------
+sint16 *AHT_GetPositiveAccelGain1Deg(void)
+{
+	return(aht.positiveAccelGain1Deg);
+}
+//---------------------------------------------------------------------------
+/**
+ * P_ACCELゲイン(傾斜角2deg)テーブルのアドレス
+ */
+//---------------------------------------------------------------------------
+sint16 *AHT_GetPositiveAccelGain2Deg(void)
+{
+	return(aht.positiveAccelGain2Deg);
+}
+//---------------------------------------------------------------------------
+/**
+ * P_ACCELゲイン(傾斜角3deg)テーブルのアドレス
+ */
+//---------------------------------------------------------------------------
+sint16 *AHT_GetPositiveAccelGain3Deg(void)
+{
+	return(aht.positiveAccelGain3Deg);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * N_ACCELゲイン(傾斜角0deg)テーブルのアドレス
+ */
+//---------------------------------------------------------------------------
+sint16 *AHT_GetNegativeAccelGain0Deg(void)
+{
+	return(aht.negativeAccelGain0Deg);
+}
+//---------------------------------------------------------------------------
+/**
+ * N_ACCELゲイン(傾斜角1deg)テーブルのアドレス
+ */
+//---------------------------------------------------------------------------
+sint16 *AHT_GetNegativeAccelGain1Deg(void)
+{
+	return(aht.negativeAccelGain1Deg);
+}
+//---------------------------------------------------------------------------
+/**
+ * N_ACCELゲイン(傾斜角2deg)テーブルのアドレス
+ */
+//---------------------------------------------------------------------------
+sint16 *AHT_GetNegativeAccelGain2Deg(void)
+{
+	return(aht.negativeAccelGain2Deg);
+}
+//---------------------------------------------------------------------------
+/**
+ * N_ACCELゲイン(傾斜角3deg)テーブルのアドレス
+ */
+//---------------------------------------------------------------------------
+sint16 *AHT_GetNegativeAccelGain3Deg(void)
+{
+	return(aht.negativeAccelGain3Deg);
+}
+
+//---------------------------------------------------------------------------
+/**
+ *  通常停車のときのブレーキ力ゲイン
+ */
+//---------------------------------------------------------------------------
+float32 AHT_GetBrakeForceNormalGain(void)
+{
+	return(aht.BrakeForceNormalGain);
+}
+//---------------------------------------------------------------------------
+/**
+ *  Body上げ走行のときブレーキ力ゲイン
+ */
+//---------------------------------------------------------------------------
+float32 AHT_GetBrakeForcePaddockGain(void)
+{
+	return(aht.BrakeForcePaddockGain);
+}
+//---------------------------------------------------------------------------
+/**
+ *  傾斜成分のブレーキ力ゲイン
+ */
+//---------------------------------------------------------------------------
+float32 AHT_GetBrakeForceSlopeGain(void)
+{
+	return(aht.BrakeForceSlopelGain);
+}
+
+
+//---------------------------------------------------------------------------
+/**
+ * ステアリング制御ゲイン（  KH_P  ）
+ */
+//---------------------------------------------------------------------------
+float32 AHT_GetgainKH_P(void)
+{
+	return(aht.gainKH_P);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ステアリング制御ゲイン（  KH_D  ）
+ */
+//---------------------------------------------------------------------------
+float32 AHT_GetgainKH_D(void)
+{
+	return(aht.gainKH_D);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ステアリング制御ゲイン（  KH_I  ）
+ */
+//---------------------------------------------------------------------------
+float32 AHT_GetgainKH_I(void)
+{
+	return(aht.gainKH_I);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ステアリング制御ゲイン（  KL_P  ）
+ */
+//---------------------------------------------------------------------------
+float32 AHT_GetgainKL_P(void)
+{
+	return(aht.gainKL_P);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ステアリング制御ゲイン（  KL_D  ）
+ */
+//---------------------------------------------------------------------------
+float32 AHT_GetgainKL_D(void)
+{
+	return(aht.gainKL_D);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ステアリング制御ゲイン（  KL_I  ）
+ */
+//---------------------------------------------------------------------------
+float32 AHT_GetgainKL_I(void)
+{
+	return(aht.gainKL_I);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ステアリング制御ゲイン（  K_ST_BEFORE  ）
+ */
+//---------------------------------------------------------------------------
+float32 AHT_GetgainK_ST_BEFORE(void)
+{
+	return(aht.gainK_ST_BEFORE);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ステアリング制御ゲイン（  K_HP_ST  ）
+ */
+//---------------------------------------------------------------------------
+float32 AHT_GetgainK_HP_ST(void)
+{
+	return(aht.gainK_HP_ST);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ステアリング制御ゲイン（  ADJ_GAIN  ）
+ */
+//---------------------------------------------------------------------------
+float32 AHT_GetgainADJ_GAIN(void)
+{
+	return(aht.gainADJ_GAIN);
+}
+//---------------------------------------------------------------------------
+/**
+ * ステアリング制御ゲイン（  BACK  ）
+ */
+//---------------------------------------------------------------------------
+const st_VariableInterpFloat*  AHT_GetgainKPreBackTable( void )
+{
+	return(gainKpreBack);
+}
+//---------------------------------------------------------------------------
+/**
+ * ステアリング制御ゲイン（  SLOW  ）
+ */
+//---------------------------------------------------------------------------
+const st_VariableInterpFloat*  AHT_GetgainKPreSlowTable( void )
+{
+	return(gainKPreSlow);
+}
+//---------------------------------------------------------------------------
+/**
+ * ステアリング制御ゲイン（  K_PRE_HIGH  ）
+ */
+//---------------------------------------------------------------------------
+const st_VariableInterpFloat*  AHT_GetgainKPreHighTableE( void )
+{
+	return(gainKPreHighE);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ステアリング制御ゲイン（  K_PRE_HIGH  ）
+ */
+//---------------------------------------------------------------------------
+const st_VariableInterpFloat*  AHT_GetgainKPreHighTableL( void )
+{
+	return(gainKPreHighL);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ステアリング速度VS電流（ steerSpeedToCurrent ）
+ */
+//---------------------------------------------------------------------------
+const st_InterpFloat*  AHT_GetSteeringSpeedToCurrentTable( void )
+{
+	return(steerSpeedToCurrent);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * SCS ゲイン（ K1 ）
+ */
+//---------------------------------------------------------------------------
+float32 AHT_GetgainScsK1(void)
+{
+	return(aht.gainScsK1);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * SCS ゲイン（ K2 ）
+ */
+//---------------------------------------------------------------------------
+float32 AHT_GetgainScsK2(void)
+{
+	return(aht.gainScsK2);
+}
+//---------------------------------------------------------------------------
+/**
+ * SCS ゲイン（ K3 ）
+ */
+//---------------------------------------------------------------------------
+float32 AHT_GetgainScsK3(void)
+{
+	return(aht.gainScsK3);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * LUX
+ */
+//---------------------------------------------------------------------------
+sint16 AHT_GetLuxDistanceFromRearCenterRight(void)
+{
+	return(aht.LuxDistanceFromRearAxleR);
+}
+sint16 AHT_GetLuxDistanceFromRearCenterLeft(void)
+{
+	return(aht.LuxDistanceFromRearAxleL);
+}
+sint16 AHT_GetLuxSideOffsetRight(void)
+{
+	return(aht.LuxSideOffsetR);
+}
+sint16 AHT_GetLuxSideOffsetLeft(void)
+{
+	return(aht.LuxSideOffsetL);
+}
+sint16 AHT_GetLuxAngleOffsetRight(void)
+{
+	return(aht.LuxAngleOffsetR);
+}
+sint16 AHT_GetLuxAngleOffsetLeft(void)
+{
+	return(aht.LuxAngleOffsetL);
+}
+sint16 AHT_GetLuxHeight(void)
+{
+	return(aht.LuxHeight);
+}
+//---------------------------------------------------------------------------
+/**
+ * MACOM FRONT
+ */
+//---------------------------------------------------------------------------
+sint16 AHT_GetMacomFR_DistanceFromRearCenter(void)
+{
+	return(aht.MacomFrontDistanceFromRearAxleR);
+}
+sint16 AHT_GetMacomFR_SideOffset(void)
+{
+	return(aht.MacomFrontSideOffsetR);
+}
+sint16 AHT_GetMacomFR_AngleOffset(void)
+{
+	return(aht.MacomFrontAngleOffsetR);
+}
+
+sint16 AHT_GetMacomFC_DistanceFromRearCenter(void)
+{
+	return(aht.MacomFrontDistanceFromRearAxleC);
+}
+sint16 AHT_GetMacomFC_SideOffset(void)
+{
+	return(aht.MacomFrontSideOffsetC);
+}
+sint16 AHT_GetMacomFC_AngleOffset(void)
+{
+	return(aht.MacomFrontAngleOffsetC);
+}
+
+sint16 AHT_GetMacomFL_DistanceFromRearCenter(void)
+{
+	return(aht.MacomFrontDistanceFromRearAxleL);
+}
+sint16 AHT_GetMacomFL_SideOffset(void)
+{
+	return(aht.MacomFrontSideOffsetL);
+}
+sint16 AHT_GetMacomFL_AngleOffset(void)
+{
+	return(aht.MacomFrontAngleOffsetL);
+}
+//---------------------------------------------------------------------------
+/**
+ * MACOM REAR
+ */
+//---------------------------------------------------------------------------
+sint16 AHT_GetMacomRC_DistanceFromRearCenter(void)
+{
+	return(aht.MacomRearDistanceFromRearAxleC);
+}
+sint16 AHT_GetMacomRC_SideOffset(void)
+{
+	return(aht.MacomRearSideOffsetC);
+}
+sint16 AHT_GetMacomRC_AngleOffset(void)
+{
+	return(aht.MacomRearAngleOffsetC);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ARS408 Front
+ */
+//---------------------------------------------------------------------------
+sint16 AHT_GetArs408FC_DistanceFromRearCenter(void)
+{
+	return(aht.Ars408FrontDistanceFromRearAxleC);
+}
+sint16 AHT_GetArs408FC_SideOffset(void)
+{
+	return(aht.Ars408FrontSideOffsetC);
+}
+sint16 AHT_GetArs408FC_AngleOffset(void)
+{
+	return(aht.Ars408FrontAngleOffsetC);
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+sint16 AHT_GetTruckRearToFront(void)
+{
+	return(aht.rearToFront);
+}
+sint16 AHT_GetTruckWidthTireToTire(void)
+{
+	return(aht.vehicleWidth);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ボディ(ベッセル)幅 [mm]
+ */
+//---------------------------------------------------------------------------
+sint16 AHT_GetBodyWidth(void)
+{
+	return(aht.bodyWidth);
+}
+//---------------------------------------------------------------------------
+/**
+ * Trajectory Dataに含まれるCourseAllowanceの標準値 [mm]
+ */
+//---------------------------------------------------------------------------
+sint16 AHT_GetCourseAllowanceNormal(void)
+{
+	return(aht.courseAllowanceNormal);
+}
+//---------------------------------------------------------------------------
+/**
+ * Trajectory Dataに含まれるCourseAllowanceの標準値(Narrow設定) [mm]
+ */
+//---------------------------------------------------------------------------
+sint16 AHT_GetCourseAllowanceNarrow(void)
+{
+	return(aht.courseAllowanceNarrow);
+}
+//---------------------------------------------------------------------------
+/**
+ * Trajectory Dataに含まれるCourseAllowanceの標準値(Wide設定)  [mm]
+ */
+//---------------------------------------------------------------------------
+sint16 AHT_GetCourseAllowanceWide(void)
+{
+	return(aht.courseAllowanceWide);
+}
+
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+// プライベート関数
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+/**
+ * Dimensionのセット
+ */
+//---------------------------------------------------------------------------
+void TruckConfigTable_SetDimension(void)
+{
+	if( truckModelNV == HD785 )
+	{
+		aht.wheelbase				 = _HD785_WHEEL_BASE;
+		aht.emptyVehicleWeight		 = _HD785_EVW;
+		aht.grossVehicleWeight		 = _HD785_GVW;
+		aht.unsprungWeight			 = _HD785_UNSPRUNG_WEIGHT;
+		aht.maxLoadWeight			 = _HD785_LOAD;
+		aht.rollingRadius			 = _HD785_ROLLING_RADIUS;
+		aht.maxSteering				 = _HD785_MAX_STEER;
+		aht.gpsAntennaX				 = _HD785_GPS_ANTENNA_X;
+		aht.gpsAntennaY				 = _HD785_GPS_ANTENNA_Y;
+		aht.gpsAntennaZ				 = _HD785_GPS_ANTENNA_Z;
+		aht.frontScale				 = _HD785_FRONT_SCALE;
+		aht.rearScale				 = _HD785_REAR_SCALE;
+		aht.stArmOffset				 = _HD785_ST_ARM_OFFSET;
+		aht.stArmLength				 = _HD785_ST_ARM_LENGTH;
+		aht.rearTyreOffset			 = _HD785_REAR_TYRE_OFFSET;
+		aht.pitchX					 = _HD785_X_PITCH;
+		aht.pitchY					 = _HD785_Y_PITCH;
+		aht.rollX					 = _HD785_X_ROLL;
+		aht.rollY					 = _HD785_Y_ROLL;
+		aht.regTargetDistance		 = _HD785_REG_TARGET_DISTANCE;
+		aht.regX					 = _HD785_X_REG;
+		aht.regY					 = _HD785_Y_REG;
+		//aht.stLink_A				 = _HD785_ST_LINK_LENGTH_A;
+		//aht.stLink_B				 = _HD785_ST_LINK_LENGTH_B;
+		//aht.stLink_C				 = _HD785_ST_LINK_LENGTH_C;
+		//aht.stLink_Alpha			 = _HD785_POT_INIT_ANGLE;
+		//aht.stLink_Bata			 = _HD785_BETA_INIT_ANGLE;
+		aht.clippingArea			 = _HD785_CLIPPING_AREA;
+
+		//if( (odsType==ESRX3_LUXX2_SRRX4)||(odsType==ESRX3_LUXX2) )
+		//{
+			aht.acc3DistanceFromRearCenter[0] = _HD785_DIS_FROM_REAR_R_ESR;
+			aht.acc3SideRadarOffset[0]		  = _HD785_SIDE_RADAR_OFFSET_R_ESR;
+			aht.acc3SideRadarAngle[0]		  = _HD785_SIDE_RADAR_ANGLE_R_ESR;
+
+			aht.acc3DistanceFromRearCenter[1] = _HD785_DIS_FROM_REAR_C_ESR;
+			aht.acc3SideRadarOffset[1]		  = _HD785_SIDE_RADAR_OFFSET_C_ESR;
+			aht.acc3SideRadarAngle[1]		  = _HD785_SIDE_RADAR_ANGLE_C_ESR;
+
+			aht.acc3DistanceFromRearCenter[2] = _HD785_DIS_FROM_REAR_L_ESR;
+			aht.acc3SideRadarOffset[2]		  = _HD785_SIDE_RADAR_OFFSET_L_ESR;
+			aht.acc3SideRadarAngle[2]		  = _HD785_SIDE_RADAR_ANGLE_L_ESR;
+
+			aht.acc3DistanceFromRearCenter[3] = _HD785_DIS_FROM_REAR_C_ESR;
+			aht.acc3SideRadarOffset[3]		  = _HD785_SIDE_RADAR_OFFSET_C_ESR;
+			aht.acc3SideRadarAngle[3]		  = _HD785_SIDE_RADAR_ANGLE_C_ESR;
+		//}
+		//else
+		//{
+		//	aht.acc3DistanceFromRearCenter[0] = _HD785_DIS_FROM_REAR_R;
+		//	aht.acc3SideRadarOffset[0]		  = _HD785_SIDE_RADAR_OFFSET_R;
+		//	aht.acc3SideRadarAngle[0]		  = _HD785_SIDE_RADAR_ANGLE_R;
+
+		//	aht.acc3DistanceFromRearCenter[1] = _HD785_DIS_FROM_REAR_C;
+		//	aht.acc3SideRadarOffset[1]		  = _HD785_SIDE_RADAR_OFFSET_C;
+		//	aht.acc3SideRadarAngle[1]		  = _HD785_SIDE_RADAR_ANGLE_C;
+
+		//	aht.acc3DistanceFromRearCenter[2] = _HD785_DIS_FROM_REAR_L;
+		//	aht.acc3SideRadarOffset[2]		  = _HD785_SIDE_RADAR_OFFSET_L;
+		//	aht.acc3SideRadarAngle[2]		  = _HD785_SIDE_RADAR_ANGLE_L;
+
+		//	aht.acc3DistanceFromRearCenter[3] = _HD785_DIS_FROM_REAR_C;
+		//	aht.acc3SideRadarOffset[3]		  = _HD785_SIDE_RADAR_OFFSET_C;
+		//	aht.acc3SideRadarAngle[3]		  = _HD785_SIDE_RADAR_ANGLE_C;
+		//}
+
+		//aht.frontBrakeMax			 = _HD785_FRONT_BRAKE_MAX;
+		//aht.frontBrakeMin			 = _HD785_FRONT_BRAKE_MIN;
+		//aht.rearBrakeMax			 = _HD785_REAR_BRAKE_MAX;
+		//aht.rearBrakeMin			 = _HD785_REAR_BRAKE_MIN;
+
+		aht.retardTableFrontHigh	 = Table_GetRetardBrakeForceTableFrontHigh_HD785();
+		aht.retardTableFrontLow		 = Table_GetRetardBrakeForceTableFrontLow_HD785();
+		aht.retardTableRearHigh		 = Table_GetRetardBrakeForceTableRearHigh_HD785();
+		aht.retardTableRearLow		 = Table_GetRetardBrakeForceTableRearLow_HD785();
+
+		aht.positiveAccelGain0Deg	 = Table_GetPositiveAccelGain0Deg_HD785();
+		aht.positiveAccelGain1Deg	 = Table_GetPositiveAccelGain1Deg_HD785();
+		aht.positiveAccelGain2Deg	 = Table_GetPositiveAccelGain2Deg_HD785();
+		aht.positiveAccelGain3Deg	 = Table_GetPositiveAccelGain3Deg_HD785();
+
+		aht.negativeAccelGain0Deg	 = Table_GetNegativeAccelGain0Deg_HD785();
+		aht.negativeAccelGain1Deg	 = Table_GetNegativeAccelGain1Deg_HD785();
+		aht.negativeAccelGain2Deg	 = Table_GetNegativeAccelGain2Deg_HD785();
+		aht.negativeAccelGain3Deg	 = Table_GetNegativeAccelGain3Deg_HD785();
+
+		aht.BrakeForceNormalGain	 = _HD785_BrakeForceNormalGain;
+		aht.BrakeForcePaddockGain	 = _HD785_BrakeForcePaddockGain;
+		aht.BrakeForceSlopelGain	 = _HD785_BrakeForceSlopelGain;
+		aht.gainKH_P				 = _HD785_gainKH_P;
+		aht.gainKH_D				 = _HD785_gainKH_D;
+		aht.gainKH_I				 = _HD785_gainKH_I;
+		aht.gainKL_P				 = _HD785_gainKL_P;
+		aht.gainKL_D				 = _HD785_gainKL_D;
+		aht.gainKL_I				 = _HD785_gainKL_I;
+		aht.gainK_ST_BEFORE			 = _HD785_gainK_ST_BEFORE;
+		aht.gainK_HP_ST				 = _HD785_gainK_HP_ST;
+		aht.gainADJ_GAIN			 = _HD785_gainADJ_GAIN;
+
+		gainKpreBack                 = _HD785_Table_GetGainKpreBack();
+		gainKPreSlow                 = _HD785_Table_GetGainKPreSlow();
+		gainKPreHighE                = _HD785_Table_GetGainKpreHighE();
+		gainKPreHighL                = _HD785_Table_GetGainKpreHighL();
+		steerSpeedToCurrent          = _HD785_Table_GetSteerSpeedToCurrent();
+
+		aht.gainScsK1				 = _HD785_ScsGainK1;
+		aht.gainScsK2				 = _HD785_ScsGainK2;
+		aht.gainScsK3				 = _HD785_ScsGainK3;
+
+		aht.LuxDistanceFromRearAxleR = _HD785_LUX_DIS_FROM_REAR_RIGHT;
+		aht.LuxDistanceFromRearAxleL = _HD785_LUX_DIS_FROM_REAR_LEFT;
+		aht.LuxSideOffsetR           = _HD785_LUX_SIDE_OFFSET_RIGHT;
+		aht.LuxSideOffsetL           = _HD785_LUX_SIDE_OFFSET_LEFT;
+		aht.LuxAngleOffsetR          = Tools_deg2circular(_HD785_LUX_ANGLE_RIGHT);
+		aht.LuxAngleOffsetL          = Tools_deg2circular(_HD785_LUX_ANGLE_LEFT);
+		aht.LuxHeight                = _HD785_LUX_HEIGHT;
+
+		aht.MacomFrontDistanceFromRearAxleR  = _HD785_MACOM_FR_DIS_FROM_REAR;
+		aht.MacomFrontSideOffsetR            = _HD785_MACOM_FR_SIDE_OFFSET;
+		aht.MacomFrontAngleOffsetR           = Tools_deg2circular(_HD785_MACOM_FR_ANGLE_OFFSET);
+
+		aht.MacomFrontDistanceFromRearAxleC  = _HD785_MACOM_FC_DIS_FROM_REAR;
+		aht.MacomFrontSideOffsetC            = _HD785_MACOM_FC_SIDE_OFFSET;
+		aht.MacomFrontAngleOffsetC           = Tools_deg2circular(_HD785_MACOM_FC_ANGLE_OFFSET);
+
+		aht.MacomFrontDistanceFromRearAxleL  = _HD785_MACOM_FL_DIS_FROM_REAR;
+		aht.MacomFrontSideOffsetL            = _HD785_MACOM_FL_SIDE_OFFSET;
+		aht.MacomFrontAngleOffsetL           = Tools_deg2circular(_HD785_MACOM_FL_ANGLE_OFFSET);
+
+		aht.MacomRearDistanceFromRearAxleC  = _HD785_MACOM_RC_DIS_FROM_REAR;
+		aht.MacomRearSideOffsetC            = _HD785_MACOM_RC_SIDE_OFFSET;
+		aht.MacomRearAngleOffsetC           = Tools_deg2circular(_HD785_MACOM_RC_ANGLE_OFFSET);
+
+		aht.Ars408FrontDistanceFromRearAxleC = _HD785_ARS408_FC_DIS_FROM_REAR;
+		aht.Ars408FrontSideOffset			 = _HD785_ARS408_FC_SIDE_OFFSET;	
+		aht.Ars408FrontAngleOffsetC			 = _HD785_ARS408_FC_ANGLE_OFFSET;
+
+		aht.rearToFront              = _HD785_REAR_TO_FRONT;
+		aht.vehicleWidth             = _HD785_VEHICLE_WIDTH;
+		aht.bodyWidth                = _HD785_BODY_WIDTH;
+		
+		aht.courseAllowanceNormal    = _HD785_COURSE_ALLOWANCE_NORMAL;
+		aht.courseAllowanceNarrow    = _HD785_COURSE_ALLOWANCE_NARROW;
+		aht.courseAllowanceWide      = _HD785_COURSE_ALLOWANCE_WIDE;
+		
+		truckModelError = OFF;
+
+	}
+	else//不明機種 HD785で初期化
+	{
+		aht.wheelbase				 = _HD785_WHEEL_BASE;
+		aht.emptyVehicleWeight		 = _HD785_EVW;
+		aht.grossVehicleWeight		 = _HD785_GVW;
+		aht.unsprungWeight			 = _HD785_UNSPRUNG_WEIGHT;
+		aht.maxLoadWeight			 = _HD785_LOAD;
+		aht.rollingRadius			 = _HD785_ROLLING_RADIUS;
+		aht.maxSteering				 = _HD785_MAX_STEER;
+		aht.gpsAntennaX				 = _HD785_GPS_ANTENNA_X;
+		aht.gpsAntennaY				 = _HD785_GPS_ANTENNA_Y;
+		aht.gpsAntennaZ				 = _HD785_GPS_ANTENNA_Z;
+		aht.frontScale				 = _HD785_FRONT_SCALE;
+		aht.rearScale				 = _HD785_REAR_SCALE;
+		aht.stArmOffset				 = _HD785_ST_ARM_OFFSET;
+		aht.stArmLength				 = _HD785_ST_ARM_LENGTH;
+		aht.rearTyreOffset			 = _HD785_REAR_TYRE_OFFSET;
+		aht.pitchX					 = _HD785_X_PITCH;
+		aht.pitchY					 = _HD785_Y_PITCH;
+		aht.rollX					 = _HD785_X_ROLL;
+		aht.rollY					 = _HD785_Y_ROLL;
+		aht.regTargetDistance		 = _HD785_REG_TARGET_DISTANCE;
+		aht.regX					 = _HD785_X_REG;
+		aht.regY					 = _HD785_Y_REG;
+		//aht.stLink_A				 = _HD785_ST_LINK_LENGTH_A;
+		//aht.stLink_B				 = _HD785_ST_LINK_LENGTH_B;
+		//aht.stLink_C				 = _HD785_ST_LINK_LENGTH_C;
+		//aht.stLink_Alpha			 = _HD785_POT_INIT_ANGLE;
+		//aht.stLink_Bata				 = _HD785_BETA_INIT_ANGLE;
+		aht.clippingArea			 = _HD785_CLIPPING_AREA;
+
+		//if( (odsType==ESRX3_LUXX2_SRRX4)||(odsType==ESRX3_LUXX2) )
+		//{
+			aht.acc3DistanceFromRearCenter[0] = _HD785_DIS_FROM_REAR_R_ESR;
+			aht.acc3SideRadarOffset[0]		  = _HD785_SIDE_RADAR_OFFSET_R_ESR;
+			aht.acc3SideRadarAngle[0]		  = _HD785_SIDE_RADAR_ANGLE_R_ESR;
+
+			aht.acc3DistanceFromRearCenter[1] = _HD785_DIS_FROM_REAR_C_ESR;
+			aht.acc3SideRadarOffset[1]		  = _HD785_SIDE_RADAR_OFFSET_C_ESR;
+			aht.acc3SideRadarAngle[1]		  = _HD785_SIDE_RADAR_ANGLE_C_ESR;
+
+			aht.acc3DistanceFromRearCenter[2] = _HD785_DIS_FROM_REAR_L_ESR;
+			aht.acc3SideRadarOffset[2]		  = _HD785_SIDE_RADAR_OFFSET_L_ESR;
+			aht.acc3SideRadarAngle[2]		  = _HD785_SIDE_RADAR_ANGLE_L_ESR;
+
+			aht.acc3DistanceFromRearCenter[3] = _HD785_DIS_FROM_REAR_C_ESR;
+			aht.acc3SideRadarOffset[3]		  = _HD785_SIDE_RADAR_OFFSET_C_ESR;
+			aht.acc3SideRadarAngle[3]		  = _HD785_SIDE_RADAR_ANGLE_C_ESR;
+		//}
+		//else
+		//{
+		//	aht.acc3DistanceFromRearCenter[0] = _HD785_DIS_FROM_REAR_R;
+		//	aht.acc3SideRadarOffset[0]		  = _HD785_SIDE_RADAR_OFFSET_R;
+		//	aht.acc3SideRadarAngle[0]		  = _HD785_SIDE_RADAR_ANGLE_R;
+
+		//	aht.acc3DistanceFromRearCenter[1] = _HD785_DIS_FROM_REAR_C;
+		//	aht.acc3SideRadarOffset[1]		  = _HD785_SIDE_RADAR_OFFSET_C;
+		//	aht.acc3SideRadarAngle[1]		  = _HD785_SIDE_RADAR_ANGLE_C;
+
+		//	aht.acc3DistanceFromRearCenter[2] = _HD785_DIS_FROM_REAR_L;
+		//	aht.acc3SideRadarOffset[2]		  = _HD785_SIDE_RADAR_OFFSET_L;
+		//	aht.acc3SideRadarAngle[2]		  = _HD785_SIDE_RADAR_ANGLE_L;
+
+		//	aht.acc3DistanceFromRearCenter[3] = _HD785_DIS_FROM_REAR_C;
+		//	aht.acc3SideRadarOffset[3]		  = _HD785_SIDE_RADAR_OFFSET_C;
+		//	aht.acc3SideRadarAngle[3]		  = _HD785_SIDE_RADAR_ANGLE_C;
+		//}
+
+		//aht.frontBrakeMax			 = _HD785_FRONT_BRAKE_MAX;
+		//aht.frontBrakeMin			 = _HD785_FRONT_BRAKE_MIN;
+		//aht.rearBrakeMax			 = _HD785_REAR_BRAKE_MAX;
+		//aht.rearBrakeMin			 = _HD785_REAR_BRAKE_MIN;
+
+		aht.retardTableFrontHigh	 = Table_GetRetardBrakeForceTableFrontHigh_HD785();
+		aht.retardTableFrontLow		 = Table_GetRetardBrakeForceTableFrontLow_HD785();
+		aht.retardTableRearHigh		 = Table_GetRetardBrakeForceTableRearHigh_HD785();
+		aht.retardTableRearLow		 = Table_GetRetardBrakeForceTableRearLow_HD785();
+
+		aht.positiveAccelGain0Deg	 = Table_GetPositiveAccelGain0Deg_HD785();
+		aht.positiveAccelGain1Deg	 = Table_GetPositiveAccelGain1Deg_HD785();
+		aht.positiveAccelGain2Deg	 = Table_GetPositiveAccelGain2Deg_HD785();
+		aht.positiveAccelGain3Deg	 = Table_GetPositiveAccelGain3Deg_HD785();
+
+		aht.negativeAccelGain0Deg	 = Table_GetNegativeAccelGain0Deg_HD785();
+		aht.negativeAccelGain1Deg	 = Table_GetNegativeAccelGain1Deg_HD785();
+		aht.negativeAccelGain2Deg	 = Table_GetNegativeAccelGain2Deg_HD785();
+		aht.negativeAccelGain3Deg	 = Table_GetNegativeAccelGain3Deg_HD785();
+
+		aht.BrakeForceNormalGain	 = _HD785_BrakeForceNormalGain;
+		aht.BrakeForcePaddockGain	 = _HD785_BrakeForcePaddockGain;
+		aht.BrakeForceSlopelGain	 = _HD785_BrakeForceSlopelGain;
+		aht.gainKH_P				 = _HD785_gainKH_P;
+		aht.gainKH_D				 = _HD785_gainKH_D;
+		aht.gainKH_I				 = _HD785_gainKH_I;
+		aht.gainKL_P				 = _HD785_gainKL_P;
+		aht.gainKL_D				 = _HD785_gainKL_D;
+		aht.gainKL_I				 = _HD785_gainKL_I;
+		aht.gainK_ST_BEFORE			 = _HD785_gainK_ST_BEFORE;
+		aht.gainK_HP_ST				 = _HD785_gainK_HP_ST;
+		aht.gainADJ_GAIN			 = _HD785_gainADJ_GAIN;
+
+		gainKpreBack                 = _HD785_Table_GetGainKpreBack();
+		gainKPreSlow                 = _HD785_Table_GetGainKPreSlow();
+		gainKPreHighE                = _HD785_Table_GetGainKpreHighE();
+		gainKPreHighL                = _HD785_Table_GetGainKpreHighL();
+		steerSpeedToCurrent          = _HD785_Table_GetSteerSpeedToCurrent();
+
+		aht.gainScsK1				 = _HD785_ScsGainK1;
+		aht.gainScsK2				 = _HD785_ScsGainK2;
+		aht.gainScsK3				 = _HD785_ScsGainK3;
+
+		aht.LuxDistanceFromRearAxleR = _HD785_LUX_DIS_FROM_REAR_RIGHT;
+		aht.LuxDistanceFromRearAxleL = _HD785_LUX_DIS_FROM_REAR_LEFT;
+		aht.LuxSideOffsetR           = _HD785_LUX_SIDE_OFFSET_RIGHT;
+		aht.LuxSideOffsetL           = _HD785_LUX_SIDE_OFFSET_LEFT;
+		aht.LuxAngleOffsetR          = Tools_deg2circular(_HD785_LUX_ANGLE_RIGHT);
+		aht.LuxAngleOffsetL          = Tools_deg2circular(_HD785_LUX_ANGLE_LEFT);
+		aht.LuxHeight                = _HD785_LUX_HEIGHT;
+
+		aht.MacomFrontDistanceFromRearAxleR  = _HD785_MACOM_FR_DIS_FROM_REAR;
+		aht.MacomFrontSideOffsetR            = _HD785_MACOM_FR_SIDE_OFFSET;
+		aht.MacomFrontAngleOffsetR           = Tools_deg2circular(_HD785_MACOM_FR_ANGLE_OFFSET);
+
+		aht.MacomFrontDistanceFromRearAxleC  = _HD785_MACOM_FC_DIS_FROM_REAR;
+		aht.MacomFrontSideOffsetC            = _HD785_MACOM_FC_SIDE_OFFSET;
+		aht.MacomFrontAngleOffsetC           = Tools_deg2circular(_HD785_MACOM_FC_ANGLE_OFFSET);
+
+		aht.MacomFrontDistanceFromRearAxleL  = _HD785_MACOM_FL_DIS_FROM_REAR;
+		aht.MacomFrontSideOffsetL            = _HD785_MACOM_FL_SIDE_OFFSET;
+		aht.MacomFrontAngleOffsetL           = Tools_deg2circular(_HD785_MACOM_FL_ANGLE_OFFSET);
+
+		aht.MacomRearDistanceFromRearAxleC  = _HD785_MACOM_RC_DIS_FROM_REAR;
+		aht.MacomRearSideOffsetC            = _HD785_MACOM_RC_SIDE_OFFSET;
+		aht.MacomRearAngleOffsetC           = Tools_deg2circular(_HD785_MACOM_RC_ANGLE_OFFSET);
+
+		aht.rearToFront              = _HD785_REAR_TO_FRONT;
+		aht.vehicleWidth             = _HD785_VEHICLE_WIDTH;
+		aht.bodyWidth                = _HD785_BODY_WIDTH;
+
+		aht.courseAllowanceNormal    = _HD785_COURSE_ALLOWANCE_NORMAL;
+		aht.courseAllowanceNarrow    = _HD785_COURSE_ALLOWANCE_NARROW;
+		aht.courseAllowanceWide      = _HD785_COURSE_ALLOWANCE_WIDE;
+
+		// 未知のタイプなのでエラーフラグを立てる
+		truckModelError = ON;
+
+        CanDebugPrintf("Dimension ???");
+
+	}
+}

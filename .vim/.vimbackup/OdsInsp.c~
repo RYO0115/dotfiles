@@ -1,0 +1,336 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2006 Komatsu Ltd. All rights reserved.
+ * 
+ *  $RCSfile: OdsInsp.h,v $
+ *  $Revision: 1.1.1.1 $
+ *  $Author: tojima $
+ *  $Date: 2005/07/06 06:36:19 $
+ *  $State: Exp $
+ *
+ *  @brief: Safety Controller
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#include "ahscommon.h"
+#include "OdsInsp.h"
+#include "InspProgress.h"
+#include "SfInspection.h"
+#include "CanIDManager.h"
+
+#include "Horn.h"
+#include "Acc3Manager.h"
+#include "RadarDefine.h"
+#include "ClippingAreaManager.h"
+#include "RpcManager.h"
+#include "Mmr1cManager.h"
+#include "AppNvram.h"
+
+#define  MAX_LONG_RANGE_SENSOR_NUM 10
+
+typedef struct{
+	sint16 item;
+	sint16 arraySize;
+	sint16 range[MAX_LONG_RANGE_SENSOR_NUM];
+} StructOdsTargetRange;
+
+/**
+ * ODS点検クラスの属性定義
+ */
+typedef struct{
+	StructOdsTargetRange  odsRange;
+	EnumInspProgress      radar[ MAX_LONG_RANGE_SENSOR_NUM ];
+	sint16  mmwNum;
+	sint16  luxNum;
+} StructOdsInsp;
+
+static StructOdsInsp odsInsp;
+
+/**
+ */
+static void OdsInsp_ClearProgress( void );
+
+
+//---------------------------------------------------------------------------
+/**
+ * 初期化
+ */
+//---------------------------------------------------------------------------
+void OdsInsp_Init( void )
+{
+	sint16 radarType;
+
+	OdsInsp_ClearProgress();
+	
+	radarType = AppNvram_GetOdsType();
+
+	if( (radarType == ACC3X3_MMR1CX2_SRRX4)
+	 || (radarType == ESRX3_MMR1CX2_SRRX4)
+	 || (radarType == ESRX3_MMR1CX2) )
+	{
+		odsInsp.mmwNum = 3;
+		odsInsp.luxNum = 2;
+		odsInsp.odsRange.item = inspLongRange;
+	}
+	else if( radarType == ACC3X4 ) // ver1.2
+	{
+		odsInsp.mmwNum = 4;
+		odsInsp.luxNum = 0;
+		odsInsp.odsRange.item = inspOds;
+	}
+	else
+	{
+		odsInsp.mmwNum = 4;
+		odsInsp.luxNum = 0;
+		odsInsp.odsRange.item = inspOds;
+	}
+
+	odsInsp.odsRange.arraySize = odsInsp.mmwNum + odsInsp.luxNum;
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ODS点検メイン
+ */
+//---------------------------------------------------------------------------
+void OdsInsp_Main(void)
+{
+	uint8  prior, dest;
+	static uint16 timer = 0;
+	static uint16 resultTimer = 0;
+	sint16 i;
+	bool   passFlag;
+	static bool checkingDone;
+
+	// ODS点検中でなければ何もしない
+	if( (Inspection_GetInspItem()!=inspOds) && (Inspection_GetInspItem()!=inspLongRange) )
+	{
+		checkingDone = FALSE;
+		resultTimer  = 0;
+		return;
+	}
+
+	// まだ点検が終了していない
+	if( InspProgress_GetOds() == inspNotyet )
+	{
+		resultTimer = 0;
+	}
+
+	// それぞれのレーダがターゲットを検出したかどうか
+	// <<ACC3>>
+	for( i=0; i<odsInsp.mmwNum; i++ )
+	{
+		if( Acc3Manager_isRadarAvailable( (RadarPosition)i ) == TRUE )
+		{
+			if( Acc3Manager_GetTargetValidFlag( (RadarPosition)i ) == ON )
+			{
+				odsInsp.radar[i] = inspPassed;
+				odsInsp.odsRange.range[i] = (sint16)(Acc3Manager_GetRange( (RadarPosition)i )/10);
+			}
+			else
+			{
+				if( odsInsp.radar[i] != inspPassed )
+				{
+					odsInsp.odsRange.range[i] = -1;
+				}
+			}
+		}
+		else
+		{
+				odsInsp.radar[i] = inspPassed;
+				odsInsp.odsRange.range[i] = 0;
+		}
+	}
+
+	// <<MMR1C>>
+	for( i=0; i<odsInsp.luxNum; i++ )
+	{
+		if( Mmr1cManager_isRadarAvailable( (Mmr1cPosition)i ) == TRUE )
+		{
+			if( Mmr1cManager_GetTargetValidFlag( (Mmr1cPosition)i ) == ON )
+			{
+				odsInsp.radar[ odsInsp.mmwNum+i ] = inspPassed;
+				odsInsp.odsRange.range[ odsInsp.mmwNum+i ] = (sint16)(Mmr1cManager_GetClosestRange( (Mmr1cPosition)i )/10);  // [cm]
+			}
+			else
+			{
+				if( odsInsp.radar[odsInsp.mmwNum+i] != inspPassed )
+				{
+					odsInsp.odsRange.range[ odsInsp.mmwNum+i ] = -1;
+				}
+			}
+		}
+		else // レーダがない場合は合格にしてしまう
+		{
+			odsInsp.radar[ odsInsp.mmwNum + i ] = inspPassed;
+			odsInsp.odsRange.range[ odsInsp.mmwNum + i ] = 0;
+		}
+	}
+
+	// 全部がPassしたらODSとしてPassと判定する
+	passFlag = ON;	// 仮合格
+	for( i=0; i<odsInsp.odsRange.arraySize; i++ )
+	{
+		// 一つでも合格していなければダメ
+		if( odsInsp.radar[i] != inspPassed ) passFlag = OFF;
+	}
+
+	if( passFlag == ON && checkingDone == FALSE )
+	{
+
+		// 合格、チェック終了
+		checkingDone = TRUE;
+		
+		// 点検合格をセットする
+		InspProgress_SetOds( inspPassed );
+
+		// ホーンを軽く鳴らす
+		Horn_HonkEx( 1, T_200MSEC, 0 );
+		
+	}
+
+	if( checkingDone == TRUE )
+	{
+		// 全部がPassしてから1秒立ったらResultを送信する
+		if( resultTimer++ == T_1SEC )
+		{
+			if( odsInsp.odsRange.item == inspLongRange )
+			{
+				Inspection_SendInspResultRpc( inspLongRange, inspSuccess );
+			}
+			else
+			{
+				Inspection_SendInspResultRpc( inspOds, inspSuccess );
+			}
+
+			// 2回送信しないためにカウンタをとめる
+			if( resultTimer > T_2SEC ) resultTimer = T_2SEC;
+			
+		}
+	}
+
+	// ODSインスペクションで検知位置情報を一秒に一回送信
+	if( (timer++%T_1SEC) == 0 )
+	{
+		if( inspection_GetSource() == CanIDManager_GetSupervisorCanID() ) { prior = CanIDManager_GetSupervisorPriority(); }
+		else if( inspection_GetSource() == MBI_A ) { prior = PRIOR_MBI; }
+		else { prior = PRIOR5; }
+
+		dest = inspection_GetSource();
+
+		// SUPERVISORに送信
+//		RpcManager_SendMsg( CAN_A,
+/*
+		RpcManager_SendMsg( inspection_GetCANPort(dest),
+							INSP_ODS_TARGET_RANGE,
+							dest,
+							prior,
+							(2 + odsInsp.odsRange.arraySize * 2),
+							(uint8*)&odsInsp.odsRange);
+*/
+		RpcManager_SendMsg( inspection_GetCANPort(dest),
+							INSP_ODS_TARGET_DISTANCE,
+							dest,
+							prior,
+							(4 + odsInsp.odsRange.arraySize * 2),
+							(uint8*)&odsInsp.odsRange);
+	}
+}
+
+//---------------------------------------------------------------------------
+/**
+ * ODS点検開始・終了
+ * クリッピングエリアをセットするだけ
+ * @param command inspStart/inspStop
+ */
+//---------------------------------------------------------------------------
+void OdsInsp_StartStop( EnumInspCommand command )
+{
+	if( command == inspStart )	// ODS点検開始
+	{
+		// ダミークリッピングエリアセット
+		ClippingArea_SetDummyZone( zoneInspection );
+
+		// レーダ計測開始
+		Acc3Manager_RadiateScanningStart();
+		
+		// MMR1Cレーダ計測開始
+		Mmr1cManager_StartOperation();
+		
+		// ODS点検状況をクリア
+		OdsInsp_ClearProgress();
+		
+		// 点検アイテムのセット
+		Inspection_SetInspItem(inspOds);
+	}
+	else if( command == inspStop )	// ODS点検終了
+	{
+		// クリッピングエリアクリア
+		ClippingArea_SetDummyZone( zoneNone );
+		
+		// レーダ計測停止
+		Acc3Manager_RadiateScanningStop();
+
+		// MMR1Cレーダ停止
+		Mmr1cManager_StopOperation();
+
+		//
+		Inspection_SetInspItem( inspNONE );
+	}
+}
+
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+// プライベート関数
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+void OdsInsp_ClearProgress( void )
+{
+	int i;
+	
+	// それぞれのレーダの進捗をクリア
+	
+	// << ACC3 >>
+	for( i=0; i<odsInsp.mmwNum; i++ )
+	{
+		if( Acc3Manager_isRadarAvailable( (RadarPosition)i ) == TRUE )
+		{
+			odsInsp.radar[i] = inspNotyet;
+		}
+		else
+		{
+			odsInsp.radar[i] = inspPassed;
+		}
+	}
+
+	// << MMR1C >>
+	for( i=0; i<odsInsp.luxNum; i++ )
+	{
+		if( Mmr1cManager_isRadarAvailable( (Mmr1cPosition)i ) == TRUE )
+		{
+			odsInsp.radar[ odsInsp.mmwNum + i ] = inspNotyet;
+		}
+		else
+		{
+			odsInsp.radar[ odsInsp.mmwNum + i ] = inspPassed;
+		}
+	}
+
+	// 距離をクリア
+	for( i=0; i<odsInsp.odsRange.arraySize; i++ )
+	{
+		odsInsp.odsRange.arraySize = odsInsp.odsRange.arraySize;
+		odsInsp.odsRange.range[i]  = 0;
+	}
+}
+

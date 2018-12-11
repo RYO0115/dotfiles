@@ -1,0 +1,176 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2009 Komatsu Ltd. All rights reserved.
+ * 
+ *    $RCSfile: MacomSelfDiag.c,v $
+ *    $Revision: 1.1.1.1 $
+ *    $Author: tojima $
+ *    $Date: 2009/09/15 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Communication module with LUX
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#include "ahscommon.h"
+#include "MacomSelfDiag.h"
+#include "ErrorManager.h"
+#include "WarningManager.h"
+
+/**
+ *
+ */
+static bool MacomSelfDiag_CompareErrorCode(const StructMacomSelfDiag* pDiag, uint16 diagcode);
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+void MacomSelfDiag_Init(StructMacomSelfDiag* pDiag, uint16 code, uint16 ahserr)
+{
+    pDiag->srrErrorCode = code;
+    pDiag->ahsErrorCode = ahserr;
+    pDiag->errTimer     = 0;
+    pDiag->noErrTimer   = 0;
+    pDiag->errState     = ENUM_SRR_NORMAL;
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+bool MacomSelfDiag_CheckIfHealthy(StructMacomSelfDiag* pDiag, uint16 diagcode)
+{
+    bool ret = TRUE;
+
+    switch( pDiag->errState )
+    {
+        case ENUM_SRR_ERROR:
+
+            // 4sec以上エラー状態が続いたらエラー発報
+            if( pDiag->errTimer >= T_4SEC )
+            {
+                Error_Set(pDiag->ahsErrorCode);
+                ret = FALSE;   // 故障と判定
+            }
+            else
+            {
+                pDiag->errTimer++;
+            }
+
+            // エラーがない時間をカウント
+            if( MacomSelfDiag_CompareErrorCode(pDiag, diagcode) == TRUE ) // エラーあり
+            {
+                pDiag->noErrTimer = 0; 
+            }
+            else
+            {
+                pDiag->noErrTimer++;
+            }
+
+            // 3sec以上エラーなし状態が続いたら状態遷移
+            if( pDiag->noErrTimer > T_3SEC )
+            {
+                pDiag->errState = ENUM_SRR_NORMAL;
+                Warning_Clear(pDiag->ahsErrorCode);
+            }
+
+            break;
+
+        case  ENUM_SRR_NORMAL:
+            
+            pDiag->errTimer   = 0;
+            pDiag->noErrTimer = 0;
+
+            if( MacomSelfDiag_CompareErrorCode(pDiag, diagcode) == TRUE ) // エラーあり
+            {
+                // 1回でもエラーが立てば、状態遷移
+                pDiag->errState = ENUM_SRR_ERROR;
+            }
+
+            break;
+
+        default:
+            break;
+    }
+
+    return(ret);
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+void MacomSelfDiag_ClearError(StructMacomSelfDiag* pDiag)
+{
+    pDiag->errTimer   = 0;
+    pDiag->noErrTimer = 0;
+    pDiag->errState   = ENUM_SRR_NORMAL;
+}
+
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+// プライベート関数
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+/**
+ * 入力された故障コードが故障診断オブジェクトの対象かどうか判定する
+ * @retval TRUE  対象である
+ * @retval FALSE 関係ない
+ 
+ * 故障コードが1～16までは、一つ一つの故障を区別
+ * 0x3C～0xFFまでは、一つの故障コードとする
+ */
+//---------------------------------------------------------------------------
+static bool MacomSelfDiag_CompareErrorCode(const StructMacomSelfDiag* pDiag, uint16 diagcode)
+{
+    bool ret;
+    
+    if( ( MACOM_ERR_TEMPERATURE_HIGH <= diagcode ) && ( diagcode <= MACOM_ERR_ASIL_FAILURE ) )
+    {
+        if( pDiag->srrErrorCode == diagcode )
+        {
+            ret = TRUE;
+        }
+        else
+        {
+            ret = FALSE;
+        }
+    }
+    else if( ( ( MACOM_ERR_SOFTFAULT             <= diagcode ) && ( diagcode <= MACOM_ERR_SOFTFAULT_EEPROM_WRITE  ) ) // 3C-3D
+          || ( ( MACOM_ERR_SOFTFAULT_DROPPED_CAN <= diagcode ) && ( diagcode <= MACOM_ERR_SOFTFAULT_DROPPED_FALST ) ) // 3F-40
+          || ( ( MACOM_ERR_SOFTFAULT_STACK_MAIN  <= diagcode ) && ( diagcode <= MACOM_ERR_SOFTFAULT_PARAM_UPDATE  ) ) // 5E-76
+           || ( ( MACOM_ERR_SOFTFAULT_DELTA       <= diagcode ) && ( diagcode <= MACOM_ERR_SOFTFAULT_EC6_HIGHTEMP  ) ) // C8-CB
+           || ( ( MACOM_ERR_SOFTFAULT_ERR_BLOCK   <= diagcode ) && ( diagcode <= MACOM_ERR_SOFTFAULT_ERR_TX        ) ) // D5-D6
+           )
+    {
+        if( pDiag->srrErrorCode == MACOM_ERR_SOFTFAULT )
+        {
+            ret = TRUE;
+        }
+        else
+        {
+            ret = FALSE;
+        }
+    }
+    else
+    {
+        // 無視
+        ret = FALSE;
+    }
+
+    return(ret);
+}
+
+/** end of file **/
+

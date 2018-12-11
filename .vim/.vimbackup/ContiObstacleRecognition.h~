@@ -1,0 +1,62 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2006 Komatsu Ltd. All rights reserved.
+ * 
+ *  $RCSfile: ContiObstacleRecognition.h,v $
+ * $Revision: 1.1.1.1 $
+ *   $Author: tojima $
+ *     $Date: 2005/07/06 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Safety Controller
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#ifndef __SF_CONTI_OBSTACLE_RECOGNITION_H__
+#define __SF_CONTI_OBSTACLE_RECOGNITION_H__
+
+#include "kcommon.h"
+
+/**
+ *
+ */
+extern void ContiObstRecog_Init(void);
+
+/**
+ *
+ */
+extern void ContiObstRecog_PreMain(void);
+
+/**
+ *
+ */
+extern void ContiObstRecog_Main(void);
+
+/**
+ *
+ */
+extern void ContiObstRecog_PostMain(void);
+
+/**
+ *
+ */
+extern void ContiObstRecog_Disable(void);
+extern void ContiObstRecog_Enable(void);
+
+/**
+ *
+ */
+extern void ContiObstRecog_Suspend(bool flag);
+
+
+/**
+ *
+ */
+extern bool ContiObstRecog_GetDetectFlag(void);
+
+#endif ///#ifndef __SF_CONTI_OBSTACLE_RECOGNITION_H__
+
+

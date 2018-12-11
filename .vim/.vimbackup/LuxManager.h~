@@ -1,0 +1,129 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2009 Komatsu Ltd. All rights reserved.
+ * 
+ *    $RCSfile: Mmr1cManager.h,v $
+ *    $Revision: 1.1.1.1 $
+ *    $Author: tojima $
+ *    $Date: 2009/09/15 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Communication module with LUX
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#ifndef ___LUX_MANAGER_H___
+#define ___LUX_MANAGER_H___
+
+#include "kcommon.h"
+#include "rpc_api.h"
+#include "Mmr1c8K.h"
+
+
+/**
+ * 初期化
+ */
+extern void Mmr1cManager_Init(void);
+
+/**
+ * メイン
+ */
+extern void Mmr1cManager_PreMain(void);
+extern void Mmr1cManager_Main(void);
+extern void Mmr1cManager_PostMain(void);
+
+/**
+ * RPC受信用コールバック関数
+ */
+extern void Mmr1cManager_ReceiveErrorMsg(const rpc_T *rpc);
+extern void Mmr1cManager_ReceiveClippedTargetMsg(const rpc_T *rpc);
+
+/**
+ * レーダ使用/無視
+ */
+extern void Mmr1cManager_Enable(void);
+extern void Mmr1cManager_Disable(void);
+
+/**
+ * 故障診断 有効/無効
+ */
+extern void Mmr1cManager_DiagnosisEnable(void);
+extern void Mmr1cManager_DiagnosisDisable(void);
+
+/**
+ * 機能停止/開始
+ */
+extern void Mmr1cManager_StartOperation(void);
+extern void Mmr1cManager_StopOperation(void);
+
+/**
+ *
+ */
+extern bool Mmr1cManager_IsMmr1cOperated(void);
+
+/**
+ *
+ */
+extern sint16 Mmr1cManager_GetTargetNum(Mmr1cPosition pos);
+extern uint8  Mmr1cManager_GetLbiClippingAreaNum(Mmr1cPosition pos);
+
+/**
+ *
+ */
+extern StructMmr1cTargetInfo* Mmr1cManager_GetTarget(
+    Mmr1cPosition pos,     /**< */
+    sint16 index         /**< */
+    );
+
+/**
+ * クリッピングされたターゲットがあるかどうか
+ */
+extern bool Mmr1cManager_GetTargetValidFlag(Mmr1cPosition pos);
+
+/**
+ * クリッピングされたターゲットのうち、最短距離
+ */
+extern sint32 Mmr1cManager_GetClosestRange(Mmr1cPosition pos);
+extern sint16 Mmr1cManager_GetClosestTargetIndex(Mmr1cPosition pos);
+
+/**
+ * レーダインストールされているかどうか
+ */
+extern bool Mmr1cManager_isRadarAvailable(Mmr1cPosition pos);
+
+extern bool Mmr1cManager_ChangeAngleOffset(
+     Mmr1cPosition pos, 
+     sint16 angle           /**< LUXの取り付け角度 [2pi/65536] */
+     );
+
+/**
+ *
+ */
+extern void Mmr1cManager_SetDebugFlag(bool flag);
+extern bool Mmr1cManager_GetDebugFlag(void);
+
+/**
+ * LUXが正常かどうか
+ */
+extern bool Mmr1cManager_Mmr1cIsHealthy(
+    Mmr1cPosition pos     /**< */
+    );
+
+extern bool Mmr1cManager_GetMmr1cReady(void);
+
+extern bool Mmr1cManager_GetNoCommPowerCycleFlagRight(void);
+extern void Mmr1cManager_RecoveryNoCommPowerCycleRight(void);
+extern bool Mmr1cManager_GetNoCommPowerCycleFlagLeft(void);
+extern void Mmr1cManager_RecoveryNoCommPowerCycleLeft(void);
+
+extern bool Mmr1cManager_GetMmr1cStartFlag(Mmr1cPosition pos);
+
+extern uint16 Mmr1cManager_GetErrMsgRecieveCounter(Mmr1cPosition pos);
+
+
+#endif // ___LUX_MANAGER_H___
+
+

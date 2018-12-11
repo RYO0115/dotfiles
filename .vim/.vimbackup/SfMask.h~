@@ -1,0 +1,120 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2005 Komatsu Ltd. All rights reserved.
+ * 
+ *  $RCSfile: SfMask.h,v $
+ * $Revision: 1.1.1.1 $
+ *   $Author: tojima $
+ *     $Date: 2005/07/06 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Safety Controller
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#ifndef __SF_MASK_H__
+#define __SF_MASK_H__
+
+#include "kcommon.h"
+#include "rpc_api.h"
+#include "ahscommon.h"
+
+#define MAX_NUM_MASK_AREA   50      /* Maskエリアの最大数 */
+
+#define MASK_PRIOR_HIGH     1
+#define MASK_PRIOR_LOW      0
+
+typedef enum {
+    maskCategoryRadar,        /**< Ver1.2 ACC3用 , Ver2.0B ESR用 */
+    maskCategoryTruckRadar,
+    maskCategoryREG,
+    maskCategoryUtility,
+    maskCategoryLux,
+    maskCategorySrrFront,
+    maskCategorySrrRear
+} MaskCategory;
+
+/**
+ * mask タイプの定義
+ */
+typedef enum{
+    maskRegular = 0,
+
+    maskAcc3MediumSensitivity  = 11,
+    maskAcc3Low1Sensitivity    = 12,
+    maskAcc3Low2Sensitivity    = 13,
+    maskAcc3Low3Sensitivity    = 14,
+    maskAcc3Disable            = 19,
+
+    maskLuxMediumSensitivity   = 21,
+    maskLuxLow1Sensitivity     = 22,
+    maskLuxLow2Sensitivity     = 23,
+    maskLuxLow3Sensitivity     = 24,
+    maskLuxDisable             = 29,
+
+    maskSrrMediumSensitivity  = 31,
+    maskSrrLow1Sensitivity    = 32,
+    maskSrrLow2Sensitivity    = 33,
+    maskSrrLow3Sensitivity    = 34,
+    maskSrrDisable            = 39,
+
+    maskUtilNarrow  = 70,
+
+    maskRegNoBank   = 81,
+    maskRegOneWay   = 84,
+
+    maskAllRadarKill    = 99     // All radar disable 
+
+} MaskType;
+
+/**
+ * 初期化
+ */
+extern void Mask_Init(void);
+
+/**
+ * メインルーチン（毎サイクル１回だけ実行すること）
+ */
+extern void Mask_Main(void);
+
+/**
+ * MASK_STARTUPの送信
+ */
+extern void Mask_SendStartUp(void);
+
+/**
+ * マスク登録RPCの受信
+ */
+extern void Mask_ReceiveSetMask(const rpc_T* rpc);
+
+/**
+ * マスク削除RPCの受信
+ */
+extern void Mask_ReceiveDeleteMask(const rpc_T* rpc);
+
+/**
+ * マスクリストの受信
+ */
+extern void Mask_RecieveIdList(const rpc_T* rpc);
+
+/** 
+ * 登録されているマスク数の取得
+ */
+extern sint16 Mask_GetMaskNum(void);
+extern sint8  Mask_GetMaskPriority(sint16 index);
+extern void*  Mask_GetMaskArea(sint16 index);
+
+/**
+ * 登録されているマスクで指定されたマスクタイプの取得
+ */
+extern MaskType Mask_GetMaskType(MaskCategory category, sint16 index);
+
+/**
+ * マスク情報をPrintf表示する
+ */
+extern void Mask_ShowMaskInfo(void);
+
+#endif ///#ifndef __SF_MASK_H__

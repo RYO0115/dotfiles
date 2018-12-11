@@ -1,0 +1,330 @@
+// ---------------------------------------------------------------
+// シミュレータのメインループ
+// 
+// ---------------------------------------------------------------
+
+#include "CSimulatorMain.h"
+#include "MyTimer.h"
+
+UINT mainCounter;
+int  mainActiveFlag;
+
+//bool first_flag = true;
+// ------------------------------------------------
+// シミュレータ初期化
+// ------------------------------------------------
+int CSimulatorMain::SimInit()
+{
+	int ret=0;
+
+	// COM Port設定ファイルの読み込み
+	char    strGyroPort[16],strRegPort[16],strMonPort[16];
+	fpRs=fopen("data/comport.cfg","rt");
+	if(fpRs==NULL){
+		fpRs=fopen("data/comport.cfg","wt");
+		strcpy(strGyroPort,"COM1");			// defaultはCOM1
+		strcpy(strRegPort, "COM4");			// defaultはCOM2
+		strcpy(strMonPort, "COM1");			// added by nishi
+		fclose(fpRs);
+	}
+	else{
+		fscanf(fpRs, "%s", strGyroPort);
+		fscanf(fpRs, "%s", strRegPort);
+		fscanf(fpRs, "%s", strMonPort);		// added by nishi
+		fclose(fpRs);
+	}
+
+	#ifdef _LHEMULATOR
+	LhObj.LhInit();				// LHコンの初期化
+	#endif
+
+	LMarkObj.LMInit();			// ランドマークの読み込み
+//	GatewayObj.GatewayInit();	// PLM3の初期化
+	TruckObj.U48TruckInterfaceObj.U48TruckInterfaceInit();	// U48TruckInterfaceの初期化
+        	GpsObj.GpsInit();			// GPSの初期化
+      	RbiManagerObj.RbiManagerInit();
+      	EmvPosObj.EmvPosSnifferInit();
+      	LuxManagerObj.LuxManagerInit();
+      	MacomManagerObj.MacomManagerInit();
+
+       	FRbiManagerObj.RbiManagerInit();
+       	ContiRbiManagerObj.RbiManagerInit();
+  
+      	if( TruckObj.IoInit()==FAIL )   ret|=0x01;				// IOの初期化
+      	if( TruckObj.TruckInit()==FAIL) ret|=0x02;				// シミュレータトラックの初期化
+      	if(	GyroObj.GyroInit(strGyroPort)==FAIL)   ret|=0x04;	// ジャイロの初期化
+      	if( JoyObj.JoyInit()==FAIL )    ret|=0x08;				// ジョイスティック初期化
+        //ジョイスティック側からトラックモデルを操作できるように
+        //ジョイスティックにトラックモデルのポインタを渡す。
+        //現状シフトだけ
+        //JoyObj.JoySetTruckObj(&TruckObj);
+
+     	if( RegObj.RegInit(strRegPort)==FAIL )    ret|=0x10;	// REG初期化
+
+	mainActiveFlag=OFF;
+
+	InitMsecTimer();
+	/*
+	if(first_flag){
+		InitLandMarkWarningCounterList();
+		first_flag = false;
+	}
+	*/
+
+	return(ret);
+}
+// ------------------------------------------------
+// シミュレータ終了
+// ------------------------------------------------
+int CSimulatorMain::SimClose()
+{
+    	TruckObj.IoClose();			// IOの終了処理
+    	GyroObj.GyroClose();		// ジャイロ終了処理
+        GpsObj.GpsClose();			// GPS終了処理
+//    	GatewayObj.GatewayClose();	// MBI終了処理
+    	TruckObj.U48TruckInterfaceObj.U48TruckInterfaceClose();	// U48TrackInterface終了処理
+    	RegObj.RegClose();
+    	LuxManagerObj.LuxManagerClose();
+    	MacomManagerObj.MacomManagerClose();
+   	LMarkObj.LMClose();
+
+   	RbiManagerObj.RbiManagerClose();
+   	EmvPosObj.EmvPosSnifferClose();
+
+   	FRbiManagerObj.RbiManagerClose();
+   	ContiRbiManagerObj.RbiManagerClose();
+
+	return(0);
+}
+
+// ------------------------------------------------
+// シミュレータのメインループ
+// この関数が50msec毎に実行される
+// ------------------------------------------------
+int CSimulatorMain::MainLoop()
+{
+//	if( mainActiveFlag==ON ) return(-1);
+	mainCounter++;
+	if(	mainCounter < 10) return(-1); //メインループ開始まで少し待つ
+
+
+	mainActiveFlag = ON;
+
+       	TruckObj.IoInput();		// IOの入力
+
+       	TruckObj.TruckMain();	// シミュレータトラックメイン
+
+
+   	GyroObj.SetGyroData(	// ジャイロにデータセット（角速度は20倍[rad/s]）
+   		TruckObj.getGyroHeading(),
+   		20.0*TruckObj.getdHeading());
+
+  	GpsObj.GpsMain(			// GPSのメインループ
+  	TruckObj.getX(),
+        	TruckObj.getY(),
+  		TruckObj.getSpeed(),
+   		TruckObj.getHeading()
+  		);
+
+	// REG (**)の位置から変更 03/May/09
+   	RegObj.RegMain(			// REGメインループ
+   		TruckObj.getX(),
+   		TruckObj.getY(),
+    		TruckObj.getSpeed()
+  		);
+
+   	TruckObj.SetREGBankSensorOutput(RegObj.RegGetBankRange());	// アナログ値出力
+
+/*   	GatewayObj.GatewayMain(TruckObj.getSpeed(),
+   	                       TruckObj.getWeight(),
+    	                       TruckObj.getFuel(),
+                               TruckObj.getEngineSpeed());
+*/
+
+   	 TruckObj.U48TruckInterfaceObj.U48TruckInterfaceMain();	//U48TrackInterfaceのメイン
+
+
+
+	#ifndef _LHEMULATOR
+	SetInitialPosition();	// 走行コンが記憶している初期位置を取得
+	#endif
+                                                                  	TruckObj.IoOutput();	// IO出力
+
+   	GyroObj.GyroMain();		// Gyro
+
+       	LMarkObj.LMMain();
+       	RbiManagerObj.RbiManagerMain(TruckObj.getX(),TruckObj.getY(),TruckObj.getHeading());
+       	LuxManagerObj.LuxManagerMain(TruckObj.getX(),TruckObj.getY(),TruckObj.getHeading());
+       	MacomManagerObj.MacomManagerMain(TruckObj.getX(),TruckObj.getY(),TruckObj.getHeading());
+
+       	EmvPosObj.EmvPosSnifferMain();
+
+       	FRbiManagerObj.RbiManagerMain(TruckObj.getX(),TruckObj.getY(),TruckObj.getHeading());
+       	ContiRbiManagerObj.RbiManagerMain(TruckObj.getX(),TruckObj.getY(),TruckObj.getHeading());
+
+
+       	JoyObj.JoyMain();		// ジョイスティックステアリング
+
+
+	// ジョイスティックからの入力
+	if( JoyObj.JoyEnable()==true )
+	{
+
+		TruckObj.setSteeringShiftAccelBrake(
+			JoyObj.JoyGetShiftPos(),
+			JoyObj.JoyGetParkBrake(),
+			JoyObj.JoyGetBrakeLock(),
+			JoyObj.JoyGetSteering(),
+			JoyObj.JoyGetAccel(),
+			JoyObj.JoyGetBrake());
+
+		TruckObj.setEngineHoist(
+			JoyObj.JoyGetEngineOpereted(),
+			JoyObj.JoyGetHoistUp(),
+			JoyObj.JoyGetHoistDown(),
+			JoyObj.JoyGetAutoManualKey());
+
+	}
+
+
+// (**)
+    if(	mainCounter == 20)
+    {
+    //本当はCAN通信確立し、Version情報を取得してから一回だけAboutBox表示するつもりだったが、
+    //SimMainでいったん表示させておかないとここの表示がうまくできなかった
+        RbiManagerObj.CRpcVersionInfoObj.SetVersionReqFlagON();
+        FRbiManagerObj.CRpcVersionInfoObj.SetVersionReqFlagON();
+        ContiRbiManagerObj.CRpcVersionInfoObj.SetVersionReqFlagON();
+    }
+
+	mainCounter++;          //なぜかメインカウンターのカウントアップが２回ある
+
+	mainActiveFlag = OFF;
+
+	return(0);
+
+}
+
+// ------------------------------------------------
+// 走行コンが記憶している初期位置を取得
+// ------------------------------------------------
+void CSimulatorMain::SetInitialPosition(void)
+{
+	static int flag=OFF;
+
+	if( flag==OFF )
+	{
+		// 走行コンから初期位置を取得したら、トラック位置を変更する
+		if( GpsObj.initFinishFlag==ON )
+		{
+			TruckObj.x = GpsObj.initXpos;
+			TruckObj.y = GpsObj.initYpos;
+			TruckObj.heading    = GpsObj.initAngle;
+			TruckObj.startAngle = GpsObj.initAngle;
+			flag = ON;
+		}
+	}
+}
+// ------------------------------------------------
+
+
+/*
+
+int CSimulatorMain::GetLandMarkWarningCounterID(int index)
+{
+	int id = 0;
+	for(int i=0; i<WC_CL_SIZE; i++){
+		if(warningCL[i].id == index){
+			id = i;
+			break;
+		}
+		else if(warningCL[i].id == -1){
+			id = i;
+			break;
+		}
+	}
+	return id;
+}	
+
+void CSimulatorMain::SortLandMarkWarningCounter(void)
+{
+	for(int i=0; i<WC_CL_SIZE; i++){
+		for(int j=i+1; j<WC_CL_SIZE; j++){
+			if(warningCL[i].id < warningCL[j].id){
+				warningCounterList wcl;
+				wcl.id = warningCL[i].id;
+				wcl.warningCounter = warningCL[i].warningCounter;
+				
+				warningCL[i].id = warningCL[j].id;
+				warningCL[i].warningCounter = warningCL[j].warningCounter;
+				
+				warningCL[j].id = wcl.id;
+				warningCL[j].warningCounter = wcl.warningCounter;
+			}
+			else if(warningCL[i].id == warningCL[j].id && warningCL[i].id == -1){
+				break;
+			}
+		}
+	}
+}
+
+void CSimulatorMain::InitLandMarkWarningCounter(int listID)
+{
+	warningCL[listID].id = -1;
+	warningCL[listID].warningCounter = 0;
+}
+
+void CSimulatorMain::SetNewLandMarkWarningCounter(int listID, int index)
+{
+	warningCL[listID].id = index;
+	warningCL[listID].warningCounter = 0;	
+}
+
+
+int CSimulatorMain::GetLandMarkWarningCounter(int index)
+{
+	uint8 id = GetLandMarkWarningCounterID(index);
+	
+	if(warningCL[id].id == -1){
+		SetNewLandMarkWarningCounter(id, index);
+	}
+	
+	return(warningCL[id].warningCounter);
+}
+
+void CSimulatorMain::CountUpLandMarkWarningCounter(int index)
+{
+	uint8 id = GetLandMarkWarningCounterID(index);
+
+	if(warningCL[id].id == -1){
+		SetNewLandMarkWarningCounter(id, index);
+	}
+	
+	warningCL[id].warningCounter++;
+}
+
+void CSimulatorMain::ResetLandMarkWarningCounter(int index)
+{
+	uint8 id = GetLandMarkWarningCounterID(index);
+	if(id != -1){
+		InitLandMarkWarningCounter(id);
+		SortLandMarkWarningCounter();
+	}
+}
+
+void CSimulatorMain::InitLandMarkWarningCounterList(void)
+{
+	for( int i=0; i<WC_CL_SIZE; i++){
+		InitLandMarkWarningCounter(i);
+	}
+}
+*/
+/* ----------------------------------------------- */
+
+//
+// ------------------------------------------------
+UINT getMainCounter(void)
+{
+	return(mainCounter);
+}
+

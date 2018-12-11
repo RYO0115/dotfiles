@@ -1,0 +1,511 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2006 Komatsu Ltd. All rights reserved.
+ * 
+ *  $RCSfile: SfInspection.h,v $
+ * $Revision: 1.1.1.1 $
+ *   $Author: tojima $
+ *     $Date: 2005/07/06 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Safety Controller
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#include "ahscommon.h"
+#include "SfInspection.h"
+#include "InspProgress.h"
+#include "OdsInsp.h"
+//s#include "CautionLampInsp.h"
+#include "SrrFrontInsp.h"
+#include "SrrRearInsp.h"
+#include "CanIDManager.h"
+
+#include "ModeLamp.h"
+#include "Headlight.h"
+#include "RpcManager.h"
+#include "ModeManager.h"
+#include "Horn.h"
+#include "LuxManager.h"
+#include "Engine.h"
+#include "AppNvram.h"
+#include "LuxPower.h"
+
+/**
+ * Inspectionクラスの属性定義
+ */
+typedef struct{
+    EnumInspItem    inspItem;  /** 現在何を点検しているか */
+    uint8           source;    /** 点検要求元(SUPERVISOR/MBI/ROUTER) */
+    sint16          radarType; /** レーダの構成定義 */
+} StructInspection;
+
+
+/**
+ * オブジェクト定義
+ */
+static StructInspection inspection;
+
+/**
+ * プライベート関数
+ */
+static void Inspection_SendInspAckRpc(EnumInspItem item, EnumInspCommand command);
+static void Inspection_SendInspAckFail(EnumInspItem item, EnumInspCommand command);
+
+//---------------------------------------------------------------------------
+/**
+ * 初期化
+ */
+//---------------------------------------------------------------------------
+void Inspection_Init(void)
+{
+    inspection.inspItem = inspNONE;
+    inspection.source   = CanIDManager_GetSupervisorCanID(); // デフォルトはSUPERVISOR
+    
+    // 進捗の初期化
+    InspProgress_Init();
+
+    // ODS点検の初期化
+    OdsInsp_Init();
+    
+    // CautionLamp点検の初期化
+//    CautionLampInsp_Init();
+
+	// SRR Front点検の初期化
+    SrrFrontInsp_Init();
+	
+	// SRR Rear点検の初期化
+    SrrRearInsp_Init();
+
+    // Radar構成の取得
+	inspection.radarType = AppNvram_GetOdsType();
+
+}
+
+//---------------------------------------------------------------------------
+/**
+ * メインルーチン
+ */
+//---------------------------------------------------------------------------
+void Inspection_Main(void)
+{
+    // 始業点検はMモード中のみ
+    if( Mode_GetCurrentMode() != modeManual ) 
+    {
+        inspection.inspItem = inspNONE;
+        return;
+    }
+
+    // ODS点検
+    OdsInsp_Main();
+
+    // CautionLamp点検
+//    CautionLampInsp_Main();
+
+	// SRR Front点検
+    SrrFrontInsp_Main();
+	
+	// SRR Rear点検
+    SrrRearInsp_Main();
+
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+void Inspection_SetInspItem(EnumInspItem item)
+{
+    inspection.inspItem = item;
+}
+EnumInspItem Inspection_GetInspItem(void)
+{
+    return(inspection.inspItem);
+}
+
+
+//---------------------------------------------------------------------------
+/**
+ * 始業点検コマンドの受信
+ * コマンドはSUPERVISOR,MBI,PCTOOLから来る可能性がある
+ */
+//---------------------------------------------------------------------------
+void Inspection_ReceiveCommand(rpc_T* rpc)
+{
+    EnumInspItem     item;
+    EnumInspCommand  command;
+
+    // サイズチェック（最低２バイト）
+    if( (int)rpc->arglen < 2 ) 
+    {
+        return;
+    }
+
+    item    = (EnumInspItem)rpc->args[0];
+    command = (EnumInspCommand)rpc->args[1];
+
+    // 送信元のアドレス(srcとdstが入れ替わる）
+    inspection.source  = rpc->dst; 
+
+    // Itemごとの処理
+    if( item == inspOds )
+    {
+		if( command == inspStart )
+		{
+			if( ( (Mode_GetCurrentMode()==modeManual)||(Mode_GetCurrentMode()==modeMaintenance) ) 
+			 && ( inspection.radarType == ACC3X4 ) )
+			{
+				OdsInsp_StartStop(command);
+			}
+			else
+			{
+				Inspection_SendInspAckFail(item,command);//ACC3ではない構成
+				return;
+			}
+		}
+		else
+		{
+			OdsInsp_StartStop(command);
+		}
+	}
+    else if( item == inspLongRange )
+    {
+		if( command == inspStart )
+		{
+			if( ( (Mode_GetCurrentMode()==modeManual)||(Mode_GetCurrentMode()==modeMaintenance) ) 
+			 && ( ( inspection.radarType == ESRX3_MMR1CX2_SRRX4 )
+			    ||( inspection.radarType == ACC3X3_MMR1CX2_SRRX4 )
+			    ||( inspection.radarType == ESRX3_MMR1CX2)  ) )
+			{
+				OdsInsp_StartStop(command);
+			}
+			else
+			{
+				Inspection_SendInspAckFail(item,command);//ClippingAreaを出せないのでFail
+				return;
+			}
+		}
+		else
+		{
+			OdsInsp_StartStop(command);
+		}
+    }
+    else if( item == inspCautionLamp )
+    {
+		if( command == inspStart )
+		{
+			if( (Mode_GetCurrentMode()==modeManual) || (Mode_GetCurrentMode()==modeMaintenance) )
+			{
+//	            CautionLampInsp_StartStop(command);
+	        }
+	        else
+	        {
+				Inspection_SendInspAckFail(item,command); // Mモードしか受け付けない
+				return;
+			}
+		}
+		else  // stop
+		{
+//	        CautionLampInsp_StartStop(command);
+		}
+    }
+    else if( item == inspSrrFront )
+    {
+		if( command == inspStart )
+		{
+			if( ( (Mode_GetCurrentMode()==modeManual)||(Mode_GetCurrentMode()==modeMaintenance) )
+			 && ( ( inspection.radarType == ESRX3_MMR1CX2_SRRX4 ) || ( inspection.radarType == ACC3X3_MMR1CX2_SRRX4 ) ) )
+			{
+		        SrrFrontInsp_StartStop(command);
+			}
+			else
+			{
+				Inspection_SendInspAckFail(item,command);//ManualModeでない、SRRがない構成
+				return;
+			}
+		}
+		else
+		{
+			SrrFrontInsp_StartStop(command);
+		}
+    }
+    else if( item == inspSrrRear )
+    {
+		if( command == inspStart )
+		{
+			if( ( (Mode_GetCurrentMode()==modeManual)||(Mode_GetCurrentMode()==modeMaintenance) )
+			 && ( ( inspection.radarType == ESRX3_MMR1CX2_SRRX4 ) || ( inspection.radarType == ACC3X3_MMR1CX2_SRRX4 ) ) )
+			{
+		        SrrRearInsp_StartStop(command);
+			}
+			else
+			{
+				Inspection_SendInspAckFail(item,command);//ManualModeでない、SRRがない構成
+				return;
+			}
+		}
+		else
+		{
+			SrrRearInsp_StartStop(command);
+		}
+    }
+    else
+    {
+		// do nothing
+    }
+
+    // コマンドに対するAck（常にSuccessを返す）
+    Inspection_SendInspAckRpc(item, command);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 始業点検状況セットRPCの受信
+ */
+//---------------------------------------------------------------------------
+void Inspection_ReceiveInspStatus(rpc_T* rpc)
+{
+    EnumInspItem     item;
+    EnumInspProgress status;
+
+    // サイズチェック（最低２バイト）
+    if( (int)rpc->arglen < 2 ) 
+    {
+        return;
+    }
+
+    item   = (EnumInspItem)rpc->args[0];
+    status = (EnumInspProgress)rpc->args[1];
+
+    // 送信元のアドレス(srcとdstが入れ替わる）
+    inspection.source  = rpc->dst; 
+
+    switch(item)
+    {
+        case inspASK:
+
+            LuxPower_On();
+            // 現在のステータスの問い合わせ
+            break;
+
+        case inspMODELAMP:
+
+            // モードランプ点検のステータスを更新
+            InspProgress_SetModeLamp(status);
+
+            // パトライトを通常に戻す
+            ModeLamp_AllOn(OFF);
+            break;
+
+        case inspHEADLIGHT:
+
+            // ヘッドライト点検のステータスを更新
+            InspProgress_SetHeadlight(status);
+            
+            // ヘッドライトを消す
+			//U48でのインスペクションはヘッドライト、ハイビーム両方点灯させるので両方消灯させる。
+            Headlight_BothOff();	
+            break;
+
+        case inspHORN:
+
+            // ホーン点検のステータスを更新
+            InspProgress_SetHorn(status);
+            break;
+
+        case inspOds:
+
+            // ODS点検のステータスを更新
+            InspProgress_SetOds(status);
+
+            // 点検終了
+            OdsInsp_StartStop(inspStop);
+            break;
+
+        case inspLongRange:
+
+            // ODS点検のステータスを更新
+            InspProgress_SetOds(status);
+
+            // 点検終了
+            OdsInsp_StartStop(inspStop);
+            break;
+
+        case inspCautionLamp:
+
+            // CautionLampのステータスを更新
+            InspProgress_SetCautionPanel(status);
+            break;
+
+        case inspSrrFront:
+
+            // SRR Front点検のステータスを更新
+            InspProgress_SetSrrFront(status);
+
+            // 点検終了
+            SrrFrontInsp_StartStop(inspStop);
+            break;
+
+        case inspSrrRear:
+
+            // SRR Rear点検のステータスを更新
+            InspProgress_SetSrrRear(status);
+
+            // 点検終了
+            SrrRearInsp_StartStop(inspStop);
+            break;
+            
+        case inspNONE:
+        	if( Engine_GetStatus()==OFF )
+        	{
+				LuxPower_Off();
+			}
+            break;
+    
+        default:
+            break;
+    }
+    
+	// statusの送信
+	InspProgress_SendMsg();
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+uint8 inspection_GetSource(void)
+{
+    return(inspection.source);
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+uint8 inspection_GetCANPort(uint8 dest)
+{
+	if( (dest == PCTOOL) || (dest == PCTOOL2) )
+	{
+	    return(CAN_B);
+	}
+	else
+	{
+	    return(CAN_A);
+	}
+}
+
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+// プライベート関数
+//---------------------------------------------------------------------------
+
+//---------------------------------------------------------------------------
+/**
+ * 始業点検コマンドに対するAckの送信
+ */
+//---------------------------------------------------------------------------
+typedef struct{
+    sint8 item;
+    sint8 command;
+    sint8 result;
+} StructInspRpcAck;
+
+void Inspection_SendInspAckRpc(EnumInspItem item, EnumInspCommand command)
+{
+    uint8  prior, dest;
+    StructInspRpcAck ack;
+    
+    // メッセージセット
+    ack.item    = (sint8)item;
+    ack.command = (sint8)command;
+    ack.result  = 0;  // success
+
+    // 送信先アドレスのセット
+    if( inspection.source == CanIDManager_GetSupervisorCanID() ) { prior = CanIDManager_GetSupervisorPriority(); }
+    else if( inspection.source == MBI_A ) { prior = PRIOR_MBI; }
+    else { prior = PRIOR5; }
+
+    dest = inspection.source;
+
+    // 送信
+//  RpcManager_SendMsg( CAN_A,
+    RpcManager_SendMsg( inspection_GetCANPort(dest),
+                        INSP_ACK,
+                        dest,
+                        prior,
+                        3,
+                        (uint8*)&ack);
+}
+void Inspection_SendInspAckFail(EnumInspItem item, EnumInspCommand command)
+{
+    uint8  prior, dest;
+    StructInspRpcAck ack;
+    
+    // メッセージセット
+    ack.item    = (sint8)item;
+    ack.command = (sint8)command;
+    ack.result  = -1;  // Fail
+
+    // 送信先アドレスのセット
+    if( inspection.source == CanIDManager_GetSupervisorCanID() ) { prior = CanIDManager_GetSupervisorPriority(); }
+    else if( inspection.source == MBI_A ) { prior = PRIOR_MBI; }
+    else { prior = PRIOR5; }
+
+    dest = inspection.source;
+
+    // 送信
+//  RpcManager_SendMsg( CAN_A,
+    RpcManager_SendMsg( inspection_GetCANPort(dest),
+                        INSP_ACK,
+                        dest,
+                        prior,
+                        3,
+                        (uint8*)&ack);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 始業点検のリザルト送信
+ */
+//---------------------------------------------------------------------------
+typedef struct{
+    sint8 item;
+    sint8 result;
+} StructInspRpcResult;
+
+void Inspection_SendInspResultRpc(EnumInspItem item, EnumInspResult result)
+{
+    StructInspRpcResult rpc;
+    uint8  prior, dest;
+
+    // メッセージセット
+    rpc.item   = (sint8)item;
+    rpc.result = (sint8)result;
+
+    // 送信先アドレスのセット
+    if( inspection.source == CanIDManager_GetSupervisorCanID() ) { prior = CanIDManager_GetSupervisorPriority(); }
+    else if( inspection.source == MBI_A ) { prior = PRIOR_MBI; }
+    else { prior = PRIOR5; }
+
+    dest = inspection.source;
+
+    // 送信
+//  RpcManager_SendMsg( CAN_A,
+    RpcManager_SendMsg( inspection_GetCANPort(dest),
+                        INSP_RESULT,
+                        dest,
+                        prior,
+                        2,
+                        (uint8*)&rpc);
+}
+
+
+

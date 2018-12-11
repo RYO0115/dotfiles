@@ -1,0 +1,30 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2009 Komatsu Ltd. All rights reserved.
+ * 
+ *    $RCSfile: ContiCfgMsg.c,v $
+ *    $Revision: 1.1.1.1 $
+ *    $Author: tojima $
+ *    $Date: 2009/09/15 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Communication module with LUX
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#ifndef __CONTI_CONFIG_MESSAGE_H__
+#define __CONTI_CONFIG_MESSAGE_H__
+
+#include "kcommon.h"
+
+/**
+ *
+ */
+extern void ContiCfgMsg_SendMsg(void);
+
+
+#endif // #ifndef __CONTI_CONFIG_MESSAGE_H__
+

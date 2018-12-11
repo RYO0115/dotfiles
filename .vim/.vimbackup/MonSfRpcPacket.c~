@@ -1,0 +1,191 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2005 Komatsu Ltd. All rights reserved.
+ * 
+ *  $RCSfile: MonSfRpcPacket.h,v $
+ * $Revision: 1.1.1.1 $
+ *   $Author: tojima $
+ *     $Date: 2005/07/06 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Safety Controller
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#include "ahscommon.h"
+#include "MonCtrl.h"
+#include "DataTypes.h"
+#include "AppMain.h"
+#include "AhsTools.h"
+#include "CanIDManager.h"
+
+#include "MonSfRpcPacket.h"
+
+#include "Router.h"
+#include "Supervisor.h"
+#include "Mbi.h"
+#include "TruckInfo.h"
+#include "Acc3Manager.h"
+#include "DriveCANAHeartbeat.h"
+#include "DataTypes.h"
+#include "LuxManager.h"
+#include "MacomManager.h"
+#include "FurukawaCommon.h"
+#include "MacomCommon.h"
+#include "TruckType.h"
+
+/**
+ * 送信データの構造定義
+ */
+typedef struct{
+    uint16  timestamp;  // タイムスタンプ
+    uint16  id;         // データID
+	
+	uint16   router;
+	uint16   supervisor;
+    uint16  mbi;
+    uint16  drive_a;
+    uint16  drive_b;
+    uint16  rbi[4];
+
+// othersの内容
+// bit0:FlightRecorder
+// bit1:IFM
+// bit2:PLM
+// bit3:VHMS
+// bit4:MBICAN判別機能有無(ON:有)
+// bit5:MBI_CAN_PORT(ON:CAN_B接続)
+    BitWord  others;     
+
+	uint16  lbi_1;
+	uint16  lbi_2;
+	uint16  srbi;
+	uint16   canAConfig;
+	uint16   dummy;
+} MonRpcPacMsg;
+
+/**
+ */
+typedef struct{
+    MonRpcPacMsg  data;  // データメッセージ構造体
+    StructMonCtrl  ctrl;     // 送信コントロールクラス
+} StructMonRpcPacketData;
+ 
+/**
+ * インスタンス定義
+ */
+static StructMonRpcPacketData moncan;
+
+//---------------------------------------------------------------------------
+/**
+ * 初期化
+ */
+//---------------------------------------------------------------------------
+void MonSfRpcPacket_Init(void)
+{
+    MonCtrl_Init( &moncan.ctrl, 
+                  (sint16)sizeof(MonRpcPacMsg),
+                  (uint8*)&moncan.data,
+                  MonSfRpcPacket_SetData
+                 );
+}
+
+//---------------------------------------------------------------------------
+/**
+ * メイン
+ */
+//---------------------------------------------------------------------------
+void MonSfRpcPacket_Main(void)
+{
+    MonCtrl_Main(&moncan.ctrl);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * データのセット
+ */
+//---------------------------------------------------------------------------
+void MonSfRpcPacket_SetData(void)
+{
+    moncan.data.timestamp = (uint16)AdtMain_GetMainCounter();
+    moncan.data.id        = SF_CAN_COMM;
+
+	moncan.data.router	   = Router_GetHeartBeatCounter();
+	moncan.data.supervisor = Supervisor_GetHeartBeatCounter();
+	moncan.data.mbi 	   = Mbi_GetCounter();
+    moncan.data.drive_a = DriveCANAHeartbeat_CetReceiveCounter();
+    moncan.data.drive_b = TruckInfo_GetNpositionCounter();
+
+    moncan.data.rbi[(sint16)posRight]  = Acc3Manager_GetRpcReceiveCounter(posRight);
+    moncan.data.rbi[(sint16)posCenter] = Acc3Manager_GetRpcReceiveCounter(posCenter);
+    moncan.data.rbi[(sint16)posLeft]   = Acc3Manager_GetRpcReceiveCounter(posLeft);
+    moncan.data.rbi[(sint16)posSteer]  = Acc3Manager_GetRpcReceiveCounter(posSteer);
+    
+    //フライトレコーダ
+	if( Mbi_GetFlightRecorderStatus() == OFF ){
+		moncan.data.others.bitf.bit0 = OFF; //正常時
+	}
+	else{
+		moncan.data.others.bitf.bit0 = ON; //異常時
+	}
+	
+	//Interface Module
+	if( Mbi_GetIfmHbStatus() == OFF ){
+		moncan.data.others.bitf.bit1 = OFF; //正常時
+	}
+	else{
+		moncan.data.others.bitf.bit1 = ON; //異常時
+	}
+	
+	//PLM
+	if( Mbi_GetPlm3Status() == OFF ){
+		moncan.data.others.bitf.bit2 = OFF; //正常時
+	}
+	else{
+		moncan.data.others.bitf.bit2 = ON; //異常時
+	}
+	
+	//VHMS
+	if( Mbi_GetVhmsHbStatus() == OFF ){
+		moncan.data.others.bitf.bit3 = OFF; //正常時
+	}
+	else{
+		moncan.data.others.bitf.bit3 = ON; //異常時
+	}
+
+	//MBICAN判別機能有無　
+	moncan.data.others.bitf.bit4 = ON;	//常時ON
+
+	//MBIのCAN接続先チェック
+	if( TruckType_GetMbiCanBus() == ENUM_TRUCK_TYPE_MBI_CAN_BUS_B )
+	{
+		moncan.data.others.bitf.bit5 = ON; //CAN_B接続時
+	}
+	else{
+		moncan.data.others.bitf.bit5 = OFF; //CAN_A接続時(または不明)
+	}
+
+	moncan.data.lbi_1 = LuxManager_GetErrMsgRecieveCounter(posLuxRight);
+	moncan.data.lbi_2 = LuxManager_GetErrMsgRecieveCounter(posLuxLeft);
+	moncan.data.srbi  = MacomManager_GetCanComCounter();
+	moncan.data.canAConfig = (uint16)CanIDManager_GetCanAConfig();
+	moncan.data.dummy = 0;
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 送信要求コマンドの受信
+ */
+//---------------------------------------------------------------------------
+void MonSfRpcPacket_ReceiveSendReq(uint8 dest, const uint8* buf)
+{
+    sint16 interval;
+    
+    interval = Tools_GetPtrToShortS(&buf[0]);
+
+    MonCtrl_SendMonData(&moncan.ctrl,dest,interval);
+}
+
+

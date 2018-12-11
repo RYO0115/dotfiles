@@ -1,0 +1,21 @@
+@echo off
+rem
+rem    @brief CR730 コンパイル用バッチファイル
+rem	   @note 使い方：binフォルダにおいて、ダブルクリックする
+rem    @author Masanori Ogihara
+rem    @date 2017/07/14 
+
+rem 環境変数の設定
+set GHS_LMWHICH=ghs
+
+rem パスの設定
+set PATH=C:\GHS\comp_201715;%PATH%
+echo;
+
+rem make clean
+make380 clean
+
+rem make
+make380
+
+pause

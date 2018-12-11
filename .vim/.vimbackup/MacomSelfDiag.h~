@@ -1,0 +1,54 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2009 Komatsu Ltd. All rights reserved.
+ * 
+ *    $RCSfile: MacomSelfDiag.h,v $
+ *    $Revision: 1.1.1.1 $
+ *    $Author: tojima $
+ *    $Date: 2009/09/15 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Communication module with LUX
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+#ifndef __MACOM_SELF_DIAG_H__
+#define __MACOM_SELF_DIAG_H__
+
+#include "kcommon.h"
+#include "MacomCommon.h"
+
+typedef enum{
+	ENUM_SRR_NORMAL,
+	ENUM_SRR_ERROR
+} EnumSrrErrState;
+
+typedef struct{
+	sint16 errTimer;
+	sint16 noErrTimer;
+	uint16 srrErrorCode;   // MACOMで定義されたエラーコード
+	uint16 ahsErrorCode;   // 無人ダンプのエラーコード
+	EnumSrrErrState errState;
+} StructMacomSelfDiag;
+
+/**
+ *
+ */
+extern void MacomSelfDiag_Init(StructMacomSelfDiag* pDiag, uint16 code, uint16 ahserr);
+
+/**
+ *
+ */
+extern bool MacomSelfDiag_CheckIfHealthy(StructMacomSelfDiag* pDiag, uint16 diagcode);
+
+/**
+ *
+ */
+extern void MacomSelfDiag_ClearError(StructMacomSelfDiag* pDiag);
+
+#endif // #ifndef __MACOM_SELF_DIAG_H__
+
+
+

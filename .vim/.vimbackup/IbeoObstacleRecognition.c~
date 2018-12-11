@@ -1,0 +1,916 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2006 Komatsu Ltd. All rights reserved.
+ * 
+ *  $RCSfile: FurukawaObstacleRecognition.h,v $
+ * $Revision: 1.1.1.1 $
+ *   $Author: tojima $
+ *     $Date: 2005/07/06 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Safety Controller
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+
+#include "ahscommon.h"
+#include "AppMain.h"
+#include "FurukawaObstacleRecognition.h"
+#include "AhsLocation.h"
+#include "Horn.h"
+#include "ModeManager.h"
+#include "ErrorManager.h"
+#include "FurukawaObstList.h"
+#include "Mmr1cManager.h"
+#include "OdsDisable.h"
+#include "ObstReport.h"
+#include "RpcManager.h"
+#include "OdsAction.h"
+#include "ObstacleRecognition.h"
+#include "SrrObstacleRecognition.h"
+#include "MaskContain.h"
+#include "ClippingAreaManager.h"
+#include "Acc3Manager.h"
+#include "TruckInfo.h"
+#include "AhsTools.h"
+#include "RpcService.h"
+#include "FurukawaThreshold.h"
+#include "WarningManager.h"
+#include "AppIfdef.h"
+
+//#define _LUX_MONITOR_PRINTF_
+#define _LUX_RECOG_PRINTF_
+
+#ifdef _LUX_RECOG_PRINTF_
+static char  lux_str[128];
+#endif
+
+
+#define FURUKAWA_NUM_OBST_LIST  10      /**< トラッキングできるターゲット数 */
+#define STOP_SCORE         100      /**<  */
+#define SLOW_SCORE          40      /**<  */
+
+#define SAME_OBJECT_DISTANCE    5000  /**< 同一物体と認識する距離 [mm] */
+#define VANISH_DISTANCE       120000  /**< 遠くに消えて忘れる距離 [mm] */
+
+/**
+ * ObstacleRecognitionクラスの属性定義
+ */
+typedef struct{
+	OdsAction          warningFlag;
+	StructFurukawaObstList list[FURUKAWA_NUM_OBST_LIST];   /**< 障害物候補リスト     */
+	bool               detectFlag;
+	bool               suspend;                   /**< BlindRun用に一時的にレーダを殺す */
+    bool               disable;                   /**< テスト用（ODS無視）*/
+    bool               sendListInfoToPc;          /**< テスト用モニパソ出力 */
+} StructFurukawaObstRecog;
+
+
+/**
+ * インスタンス定義
+ */
+static StructFurukawaObstRecog  furukawaObst;
+
+
+/**
+ * プライベート関数定義
+ */
+static void   FurukawaObstRecog_ExtractCandidate(Mmr1cPosition pos);
+static bool FurukawaObstRecog_SetObstacle(
+       sint32 range,      /** < 距離 [mm] */
+       sint16 speed,      /** < 相対速度 [mm/sec] */
+       sint32 xpos,       /** < 検知ターゲットのX座標 [mm] */
+       sint32 ypos,       /** < 検知ターゲットのY座標 [mm] */
+       sint16 score,      /** < 検知ターゲットの得点 */
+       Mmr1cPosition pos  /** < 検知レーダの種類 */
+       );
+static void   FurukawaObstRecog_ClearAllObstacle(void);
+static bool   FurukawaObstRecog_isListEmpty(sint16 index);
+static sint16 FurukawaObstRecog_SearchList(sint32 range, uint32 time);
+static sint16 FurukawaObstRecog_GetAvailableList(void);
+static void   FurukawaObstRecog_DetectObstacle(void);
+static void   FurukawaObstRecog_ClearPassedList(ModeType mode);
+static void   FurukawaObstRecog_UpdateExpectedRange(void);
+//static sint16 FurukawaObstRecog_CalcScore(sint16 speed);
+static void   FurukawaObstRecog_SendListToMonitor(void);
+static void   FurukawaObstRecog_WarningClear(void);
+static void   FurukawaObstRecog_SetWarning(void);
+static void   FurukawaObstRecog_SetError(void);
+static bool FurukawaObstRecog_CheckRelativeSpeed(
+	 sint16 speed             /**< 計測された速度 */
+     );
+static sint16 FurukawaObstRecog_CalcScore(void);
+
+//---------------------------------------------------------------------------
+/**
+ * 初期化
+ */
+//---------------------------------------------------------------------------
+void FurukawaObstRecog_Init(void)
+{
+    furukawaObst.detectFlag       = OFF;
+    furukawaObst.disable          = FALSE;
+    furukawaObst.suspend          = FALSE;
+    furukawaObst.sendListInfoToPc = TRUE;
+    furukawaObst.warningFlag      = odsOk;
+
+    FurukawaObstRecog_ClearAllObstacle();
+    FurukawaThreshold_Init();
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+void FurukawaObstRecog_PreMain(void)
+{
+    sint16 stat;
+    ModeType mode;
+    
+    if( ( furukawaObst.disable == FALSE ) && ( furukawaObst.suspend == FALSE ) )
+    {
+        mode = Mode_GetCurrentMode();
+
+        // ターゲットの抽出
+        //if( mode == modeAuto)
+    	if( mode == modeAuto || mode == modeManual) //今回、常にRadiateしていると想定して
+        {
+
+            stat = TruckInfo_GetMovingStatus();
+
+            if( stat == MOVE_FORWARD )
+            {
+                FurukawaObstRecog_ExtractCandidate(posMmr1cRight);
+                FurukawaObstRecog_ExtractCandidate(posMmr1cLeft);
+            }
+            else
+            {
+                //
+            }
+        }
+        //else if( ( mode == modeManual ) || ( mode == modeMaintenance ) )
+    	else if( mode == modeMaintenance )
+        {
+            
+            if( Mmr1cManager_GetDebugFlag() == TRUE )
+            {
+                FurukawaObstRecog_ExtractCandidate(posMmr1cRight);
+                FurukawaObstRecog_ExtractCandidate(posMmr1cLeft);
+            }
+            else
+            {
+                //
+            }
+        }
+        else
+        {
+			;
+        }
+    }
+    else
+    {
+        //
+    }
+}
+
+//---------------------------------------------------------------------------
+/**
+ * メイン
+ */
+//---------------------------------------------------------------------------
+void FurukawaObstRecog_Main(void)
+{
+    ModeType mode, modePrev;
+    static bool prevDetectFlag = OFF;
+    
+    mode     = Mode_GetCurrentMode();
+    modePrev = Mode_GetPreviousMode();
+    
+    if( furukawaObst.detectFlag == ON )
+    {
+        if( ( mode != modeAuto ) && ( modePrev == modeAuto ) )
+        {
+            furukawaObst.detectFlag = OFF;
+
+            // 障害物リストをクリア
+            FurukawaObstRecog_ClearAllObstacle();
+            
+            // BlindRUNを開始
+            OdsDisable_BlindRunStart();
+        }
+    }
+    else
+    {
+        //
+    }
+
+    // Sモードになったら一旦障害物リストをクリア
+    if( ( mode == modeStop ) && ( modePrev != modeStop ) )
+    {
+        // 障害物リストをクリア
+        FurukawaObstRecog_ClearAllObstacle();
+
+        furukawaObst.detectFlag = OFF;
+    }
+    else
+    {
+        //
+    }
+
+    // 通り過ぎたもの、遠くに去ったものは削除
+    FurukawaObstRecog_ClearPassedList(mode);
+
+    // 得点閾値を超えたものがあったらエラーまたはワーニング
+    FurukawaObstRecog_DetectObstacle();
+
+    // リストに登録されている障害物の次の予想距離を計算
+    FurukawaObstRecog_UpdateExpectedRange();
+
+    // 障害物を検知したらホーンを鳴らす
+    // （他のレーダが既に検知中でないとき）
+    if( ( furukawaObst.detectFlag == ON ) 
+     && ( prevDetectFlag == OFF ) 
+     && ( ObstRecog_GetDetectFlag() == OFF ) 
+//     && ( SrrObstRecog_GetDetectFlag() == OFF ) 
+    )
+    {
+        Horn_Honk(hornWarning);
+    }
+
+    // テスト用モニパソに送信
+    FurukawaObstRecog_SendListToMonitor();
+
+    prevDetectFlag = furukawaObst.detectFlag;
+
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+void FurukawaObstRecog_PostMain(void)
+{
+    // 
+}
+
+//---------------------------------------------------------------------------
+/**
+ * Furukawa機能を殺す
+ */
+//---------------------------------------------------------------------------
+void FurukawaObstRecog_Disable(void)
+{
+    furukawaObst.disable = TRUE;
+}
+//---------------------------------------------------------------------------
+/**
+ * Furukawa機能を使う
+ */
+//---------------------------------------------------------------------------
+void FurukawaObstRecog_Enable(void)
+{
+    furukawaObst.disable = FALSE;
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+void FurukawaObstRecog_Suspend(bool flag)
+{
+    furukawaObst.suspend = flag;
+}
+
+//---------------------------------------------------------------------------
+/**
+ * レーダが障害物を検知し、停止しようとしているかどうか
+ */
+//---------------------------------------------------------------------------
+bool FurukawaObstRecog_GetDetectFlag(void)
+{
+    return(furukawaObst.detectFlag);
+}
+
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+// プライベート関数
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+/**
+ * 相対速度による危険度のチェック
+ * @return
+ */
+//---------------------------------------------------------------------------
+bool FurukawaObstRecog_CheckRelativeSpeed(
+	 sint16 speed               /**< 計測された速度 [0.1m/s = 100mm/s]]*/
+     )
+{
+    bool ret;
+    
+    if( speed > 0 ) 
+	{
+		ret = TRUE;  // 符号の定義がわからないので、とれあえず、両方TRUEとした
+	}
+	else
+	{
+		ret = TRUE;
+	}
+   
+    return(ret);
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+MaskType FurukawaObstRecog_CompareWithMask(sint32 xmm, sint32 ymm)
+{
+    MaskType mask;
+
+    if( Mode_GetCurrentMode() == modeAuto )
+    {
+        mask = MaskContain_Mmr1cMask(xmm,ymm);
+    }
+    else
+    {
+        mask = maskRegular;
+    }
+
+    return(mask);
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+void FurukawaObstRecog_ExtractCandidate(Mmr1cPosition pos)
+{
+    sint16 num, i;
+	sint16 ret;
+	sint16 score, speed, minPower;
+	sint32 latpos;
+    StructMmr1cTargetInfo *pTarget;
+    bool   valid;
+    MaskType targetMask;
+    sint8  type;
+
+    // FURUKAWAからレーダ情報取得
+    num = Mmr1cManager_GetTargetNum(pos);
+
+	
+	
+    for( i=0; i<num; i++ )
+    {
+        // 検知ターゲットの取得
+        pTarget = Mmr1cManager_GetTarget(pos, i);
+        
+        if( pTarget != NULL )
+        {
+            // マスク判定
+            targetMask = FurukawaObstRecog_CompareWithMask(pTarget->xpos, pTarget->ypos);
+
+	        // 反射強度閾値の取得
+			minPower = FurukawaThreshold_GetThreshold(pTarget->range, targetMask);
+			
+        	
+	        // 反射強度
+	        if( pTarget->power < minPower ) 
+	        {
+	            continue;
+	        }
+	        else
+	        {
+	            //
+	        }
+
+        	
+        	/*
+            // 相対速度のチェック
+			valid = FurukawaObstRecog_CheckRelativeSpeed(pTarget->speed);
+			if( valid == FALSE )
+	        {
+	            continue;
+	        }
+	        else
+	        {
+	            //
+	        }
+        	*/
+
+	        // クリッピング
+			//ret = ClippingArea_ZoneContains(target.xpos, target.ypos, &latpos, &type);
+			ret = ClippingArea_ZoneContains(pTarget->xpos, pTarget->ypos, &latpos, &type);
+				
+        	#ifdef _LUX_RECOG_PRINTF_
+				sprintf(lux_str, "clippingCandidateTarget[%ld]: ret=%ld, (x,y)=(%ld,%ld), power=%ld, speed = %d",
+					i, ret, pTarget->xpos, pTarget->ypos, pTarget->power, pTarget->speed);
+				CanDebugPrintf(lux_str);
+			#endif
+			
+        	if( ret != ZONE_OUT )
+			{
+	            // scoreの計算
+				score = FurukawaObstRecog_CalcScore();
+				#ifdef _LUX_RECOG_PRINTF_
+				//sprintf(lux_str, "score:%ld", score);
+				//CanDebugPrintf(lux_str);
+				#endif
+
+                // 登録
+                FurukawaObstRecog_SetObstacle(pTarget->range, // [mm]   
+                                          pTarget->speed,                         // [mm/s] 
+                                          pTarget->xpos,  // [mm] 
+                                          pTarget->ypos,  // [mm] 
+                                          score,                     
+                                          pos                        
+                                          );
+				// ヘッドライト点灯
+				
+
+				
+            }
+            else
+            {
+                // 障害物として登録しない
+            }
+        }
+        else
+        {
+            // 検知ターゲットなし
+        }
+    }
+					//クリッピングエリア内のobstacleリストを確認
+	#ifdef _LUX_RECOG_PRINTF_
+
+	for( i=0; i<2; i++ )
+	{
+		//sprintf(lux_str, "clippingTarget[%d]:(x,y)=(%d,%d), speed = %f, score = %d",
+		sprintf(lux_str, "clippingTarget[%d]:(x,y)=(%d,%d), range = %d, speed = %d, score = %d",
+			i, 
+			furukawaObst.list[i].xpos, 
+			furukawaObst.list[i].ypos, 
+			(int)furukawaObst.list[i].expectRange, 
+			furukawaObst.list[i].speed,
+			furukawaObst.list[i].score);
+		
+		CanDebugPrintf(lux_str);
+
+	}
+	
+	#endif
+	
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 検知障害物情報をリストに登録する
+ * @retval TRUE
+ * @retval FALSE
+ */
+//---------------------------------------------------------------------------
+bool FurukawaObstRecog_SetObstacle(
+       sint32 range,      /** < 距離 [mm] */
+       sint16 speed,      /** < 相対速度 [mm/sec] 近づく方向が負*/
+       sint32 xpos,       /** < 検知ターゲットのX座標 [mm] */
+       sint32 ypos,       /** < 検知ターゲットのY座標 [mm] */
+       sint16 score,      /** < 検知ターゲットの得点 */
+       Mmr1cPosition pos    /** < 検知レーダの種類 */
+       )
+{
+    sint16 index;
+    uint32 nowTime;
+
+    // 現在時刻
+    nowTime = AdtMain_GetMainCounter();
+
+    // 登録されている障害物から同一と思われるものを探す
+    // 見つからなければ空いているリストを探す
+    index = FurukawaObstRecog_SearchList(range,nowTime);
+	// バッファフル
+    if(index == -1)
+    {
+        // 障害物リストバッファフル（エラーにする）
+        Error_Set(E_TOO_MANY_OBSTACLE);
+
+        return(FALSE);
+    }
+    else
+    {
+    	/*
+    	#ifdef _LUX_RECOG_PRINTF_
+    		sprintf(lux_str, "Time:%d :: before_setting: list[%d].score=%d", furukawaObst.list[index].time, index, furukawaObst.list[index].score);
+			CanDebugPrintf(lux_str);
+		#endif
+    	*/
+        // リストに登録（更新）
+        FurukawaObstList_SetTargetInfo(&furukawaObst.list[index],  // ストアする障害物リストの場所
+                                   range,                // 距離 [mm]
+                                   speed,                // 速度 [mm/s]
+                                   xpos,                 // [mm]
+                                   ypos,                 // [mm]
+                                   score,                // 得点
+                                   pos);                 // 検知したレーダ種類
+		/*
+    	#ifdef _LUX_RECOG_PRINTF_
+    		sprintf(lux_str, "Time:%d :: after_setting: list[%d].score:%d", furukawaObst.list[index].time, index, furukawaObst.list[index].score);
+			CanDebugPrintf(lux_str);
+		#endif
+    	*/
+        return(TRUE);
+    }
+}
+//---------------------------------------------------------------------------
+/**
+ * 障害物リストのクリア
+ */
+//---------------------------------------------------------------------------
+void FurukawaObstRecog_ClearAllObstacle(void)
+{
+    sint16 i;
+
+    for( i=0; i<FURUKAWA_NUM_OBST_LIST; i++ )
+    {
+        FurukawaObstList_Clear(&furukawaObst.list[i]);
+    	
+    }
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 障害物リストが空かどうか
+ * @retval TRUE  空
+ * @retval FALSE 使用中
+ */
+//---------------------------------------------------------------------------
+bool FurukawaObstRecog_isListEmpty(sint16 index)
+{
+    if( furukawaObst.list[index].radar == posMmr1cNone )
+    {
+        return(TRUE);
+    }
+    else
+    {
+        return(FALSE);
+    }
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 登録されている障害物から同一と思われるものを探す
+ * 見つからなければ空いているリストを探す
+ * @param range 障害物の距離 [mm]
+ * @param time [50msec:システムタイム]
+ * @return リストのインデックス
+ */
+//---------------------------------------------------------------------------
+sint16 FurukawaObstRecog_SearchList(sint32 range, uint32 time)
+{
+    sint16 i;
+    sint32 diffRange, diffRangeLimit;
+    uint32 diffTime;
+
+    for( i=0; i<FURUKAWA_NUM_OBST_LIST; i++ )
+    {
+        // 登録されている障害物と距離の差を計算する
+        diffRange = labs((sint32)(furukawaObst.list[i].expectRange - range));
+
+		#ifdef _LUX_RECOG_PRINTF_
+			sprintf(lux_str, "list[%d] : expectRange:%d, Range:%d", i, furukawaObst.list[i].expectRange, range);
+			CanDebugPrintf(lux_str);
+		#endif
+		
+        
+        if( diffRange <= SAME_OBJECT_DISTANCE )
+        {
+            return(i);
+        }
+        else
+        {
+            //
+        }
+    }
+    
+    // 該当するものがなければ新しい障害物
+    return( FurukawaObstRecog_GetAvailableList() );
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 障害物リストの空きを探す
+ * @retval 0-20 リストのインデックス
+ * @retval -1 リストに空きがない
+ */
+//---------------------------------------------------------------------------
+sint16 FurukawaObstRecog_GetAvailableList(void)
+{
+    sint16 i;
+    
+    // 空いているバッファを探す
+    for( i=0; i<FURUKAWA_NUM_OBST_LIST; i++ )
+    {
+        if( FurukawaObstRecog_isListEmpty(i)==TRUE )
+        {
+            return(i);
+        }
+        else
+        {
+            //
+        }
+    }
+    
+    // バッファフル
+    return(-1);
+}
+//---------------------------------------------------------------------------
+/**
+ * 得点閾値を超えたものがあったらエラーまたはワーニング
+ * 1点   : ワーニング（減速しない）
+ * 50点  : ワーニング（10km/hに減速）
+ * 100点 : エラー（停止）
+ */
+//---------------------------------------------------------------------------
+void FurukawaObstRecog_DetectObstacle(void)
+{
+    sint16 i,index;
+    sint16 maxScore = 0;
+
+    // レーダDisable
+    if( ( furukawaObst.disable == TRUE ) || ( furukawaObst.suspend == TRUE ) )
+    {
+        return;
+    }
+    else
+    {
+        //
+    }
+
+    // 最も得点の高いものを探す
+    index = -1;
+    for( i=0; i<FURUKAWA_NUM_OBST_LIST; i++ )
+    {
+        if( FurukawaObstRecog_isListEmpty(i)==FALSE ) 
+        {
+            if( furukawaObst.list[i].score > maxScore ) 
+            {
+                maxScore = furukawaObst.list[i].score;
+                index = i;
+            }
+            else
+            {
+                //
+            }
+        }
+        else
+        {
+            //
+        }
+    }
+
+    if( index == -1 )
+    {
+        // リストは空（何も検知していない）
+        // ワーニング発生中ならクリアする
+        FurukawaObstRecog_WarningClear();
+    }
+    else
+    {
+        if( STOP_SCORE <= maxScore )  // 停止 (100点）
+        {
+            furukawaObst.detectFlag = ON;      // 
+
+            // セントラルに報告する障害物情報をセットする
+            ObstReport_SetMmr1cObstacleInfo( furukawaObst.list[index].radar,
+                                           furukawaObst.list[index].xpos,
+                                           furukawaObst.list[index].ypos,
+                                           (uint8)(furukawaObst.list[index].range/1000)
+                                         );
+
+            ObstReport_FurukawaUpdateInhibit();     // セントラルへ送信する障害物情報の更新を禁止する
+
+            FurukawaObstRecog_SetError();
+        }
+        else if( ( SLOW_SCORE <= maxScore ) && ( maxScore < STOP_SCORE ) )
+        {
+            FurukawaObstRecog_SetWarning();
+        }
+        else
+        {
+            //
+        }
+    }
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 通り過ぎたものは削除（ワーニングも解除）
+ */
+//---------------------------------------------------------------------------
+void FurukawaObstRecog_ClearPassedList(ModeType mode)
+{
+    sint16 i;
+    uint32 nowTime;
+    sint32 dt, tThresh;
+
+    if( mode  == modeAuto )
+    {
+        tThresh = T_30SEC;
+    }
+    else
+    {
+        tThresh = T_2SEC;
+    }
+
+    // 現在時刻
+    nowTime = AdtMain_GetMainCounter();
+
+    for( i=0; i<FURUKAWA_NUM_OBST_LIST; i++ )
+    {
+        if( FurukawaObstRecog_isListEmpty(i) == FALSE ) 
+        {
+            // 通り過ぎたら削除
+            if( furukawaObst.list[i].expectRange <= 0 )
+            {
+                FurukawaObstList_Clear(&furukawaObst.list[i]);
+            }
+            // 120mより遠くにいったら削除
+            else if(furukawaObst.list[i].expectRange > VANISH_DISTANCE )
+            {
+            	
+            	FurukawaObstList_Clear(&furukawaObst.list[i]);
+            }
+            else
+            {
+                // do nothing
+            }
+            
+            // 最後に検知されてから30sec以上経過していたら削除
+            dt = (sint32)(nowTime - furukawaObst.list[i].time);
+            if( dt > tThresh )
+            {
+                FurukawaObstList_Clear(&furukawaObst.list[i]);
+            }
+            else
+            {
+                // do nothing
+            }
+        }
+        else
+        {
+            // do nothing
+        }
+    }
+}
+
+//---------------------------------------------------------------------------
+/**
+ * リストに登録されている障害物の次の予想距離を計算
+ */
+//---------------------------------------------------------------------------
+void FurukawaObstRecog_UpdateExpectedRange(void)
+{
+    int i;
+
+    for( i=0; i<FURUKAWA_NUM_OBST_LIST; i++ )
+    {
+        if( FurukawaObstRecog_isListEmpty(i) == FALSE ) 
+        {
+            FurukawaObstList_CalcExpectedRange(&furukawaObst.list[i]);
+        }
+        else
+        {
+            //
+        }
+    }
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 
+ */
+//---------------------------------------------------------------------------
+void FurukawaObstRecog_SendListToMonitor(void)
+{
+    sint16 i, num, size;
+    uint8 buf[256], *ptr;
+    sint32 range, eRange;
+    sint32 xpos, ypos;
+    sint16 speed;
+    uint8  score;
+
+    num = 0;
+    ptr = &buf[0];
+
+    for( i=0; i<FURUKAWA_NUM_OBST_LIST; i++ )
+    {
+        if( FurukawaObstRecog_isListEmpty(i) == FALSE )
+        {
+            range  = furukawaObst.list[i].range;
+            eRange = furukawaObst.list[i].expectRange;
+            score  = (uint8)furukawaObst.list[i].score;
+			speed  = furukawaObst.list[i].speed;
+            xpos   = furukawaObst.list[i].xpos;
+            ypos   = furukawaObst.list[i].ypos;
+
+            memcpy((void*)ptr, (void*)&range,  4); ptr += 4;
+            memcpy((void*)ptr, (void*)&eRange, 4); ptr += 4;
+            memcpy((void*)ptr, (void*)&xpos,   4); ptr += 4;
+            memcpy((void*)ptr, (void*)&ypos,   4); ptr += 4;
+            memcpy((void*)ptr, (void*)&speed,  2); ptr += 2;
+            memcpy((void*)ptr, (void*)&score,  1); ptr += 1;
+
+            num++;
+        }
+    }
+
+    size = 19 * num;
+
+    if( ( furukawaObst.sendListInfoToPc == TRUE ) && ( size != 0 ) )
+    {
+        // 送信
+        RpcManager_SendMsgNoAck( CAN_B,
+                                 LUX_DEBUG_MSG,
+                                 RpcService_GetPcAddress(),
+                                 PRIOR_PC,
+                                 size,
+                                 buf
+                                 );
+#ifdef _LUX_MONITOR_PRINTF_
+        sprintf(lux_str,"Send : %d %d",
+                                 furukawaObst.sendListInfoToPc, 
+                                 size);
+        CanDebugPrintf(lux_str);
+#endif
+    }
+    else
+    {
+#ifdef _LUX_MONITOR_PRINTF_
+        sprintf(lux_str,"NotSend : %d %d",
+                                 furukawaObst.sendListInfoToPc, 
+                                 size);
+        CanDebugPrintf(lux_str);
+#endif
+        //
+    }
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 障害物検知によるワーニング
+ */
+//---------------------------------------------------------------------------
+void FurukawaObstRecog_WarningClear(void)
+{
+    if( furukawaObst.warningFlag != odsOk )
+    {
+        Warning_Clear(E_DETECT_LUX);
+        furukawaObst.warningFlag = odsOk;
+    }
+    else
+    {
+        //
+    }
+}
+
+void FurukawaObstRecog_SetWarning(void)
+{
+    Warning_Set(E_DETECT_LUX);
+    furukawaObst.warningFlag = odsSlowDown;
+}
+
+void FurukawaObstRecog_SetError(void)
+{
+    Error_Set(E_DETECT_LUX);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * MACOM検知の得点計算
+ */
+//---------------------------------------------------------------------------
+static sint16 FurukawaObstRecog_CalcScore(void)
+{
+    sint16 ret;
+    
+    if( Mode_GetCurrentMode() == modeAuto )
+    {
+    	ret = (sint16)10;  // とりあえず一律10点
+    }
+    else
+    {
+        ret = 0;
+    }
+
+    return(ret);
+}

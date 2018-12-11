@@ -1,0 +1,613 @@
+/**
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2009 Komatsu Ltd. All rights reserved.
+ *
+ *    $RCSfile: LuxManager.c,v $
+ *    $Revision: 1.1.1.1 $
+ *    $Author: tojima $
+ *    $Date: 2009/09/15 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Communication module with LUX
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+#include "ahscommon.h"
+#include "AppMain.h"
+#include "RpcManager.h"
+#include "AhsTools.h"
+#include "Ars408Manager.h"
+//#include "LuxPower.h"
+#include "AppNvram.h"
+#include "HeadLight.h"
+#include "ModeManager.h"
+#include "TruckConfigTable.h"
+#include "TruckInfo.h"
+#include "ClippingAreaManager.h"
+#include "Ars408Diagnosis.h"
+//#include "LuxAngleCalib.h"
+#include "WarningManager.h"
+#include "ContiCfgMsg.h"
+#include "Engine.h"
+#include "ErrorManager.h"
+#include "SfInspection.h"
+#include "AppIfdef.h"
+#include "RpcManager.h"
+
+#define _ARSMAN_DEBUG_PRINT_
+
+#ifdef _ARSMAN_DEBUG_PRINT_
+static uint8 arsDebugStr[128];
+#endif
+
+
+/**
+ * StructArs408Manager型定義
+ */
+typedef struct{
+	StructArs408  ars408;       /**< Radarオブジェクト */
+
+	bool   disableDiag;     /**< 1:故障診断しない(test用)   0:する(通常) */
+	bool   valid;           /**< 1:使用する                 0:使用しない */
+
+	bool   debugFlag;       /**< テスト用計測許可フラグ */
+
+	bool   operation;       /**< 1:計測中    0:停止 */
+
+	uint16 recTimer;        /**< LBIからのRPC受信タイマー */
+	bool   contiReady;        /**< ２つとも準備OKかどうか */
+//    bool   powerCycleReq;
+
+} StructArs408Manager;
+
+
+/**
+ * インスタンス定義
+ */
+static StructArs408Manager conti;
+
+
+/**
+ * プライベート関数プロトタイプ宣言
+ */
+static void Ars408Manager_Diagnosis(StructArs408 *pArs);
+static void Ars408Manager_HeadlightControl(void);
+static StructArs408* Ars408Manager_GetArs408Object(void);
+static void Ars408Manager_PowerControl(void);
+static void Ars408Manager_CheckIfArs408IsReady(void);
+
+//---------------------------------------------------------------------------
+/**
+ * 初期化
+ */
+//---------------------------------------------------------------------------
+void Ars408Manager_Init(void)
+{
+	sint16 dxFC, dyFC, dyawFC;
+	bool existFlag;
+	
+	existFlag = TRUE;
+	
+	dxFC   = AHT_GetArs408FC_DistanceFromRearCenter();
+	dyFC   = AHT_GetArs408FC_SideOffset();
+	dyawFC = AHT_GetArs408FC_AngleOffset();
+
+    // 各レーダの初期化
+	Ars408_Init(&conti.ars408, existFlag, dxFC, dyFC, dyawFC);
+
+	conti.disableDiag  = FALSE;
+	conti.recTimer     = 0;
+
+	// LUXが存在しなければLUX機能はなし
+	if( existFlag==FALSE) 
+	{
+		conti.valid = FALSE;
+	}
+	else
+	{
+		conti.valid = TRUE;
+	}
+
+	conti.operation    = FALSE;
+
+	conti.debugFlag     = TRUE;
+	conti.contiReady    = TRUE;
+
+	// キャリブレーション
+//    LuxAngleCalib_Init();
+
+	// レーダ電源の初期化
+//	LuxPower_Init();
+
+}
+
+//---------------------------------------------------------------------------
+/**
+ * メイン
+ */
+//---------------------------------------------------------------------------
+void Ars408Manager_PreMain(void)
+{
+	float32  cs,sn;
+	sint16   heading;
+	sint32   x,y;
+
+
+	if( conti.valid == TRUE )
+	{
+		x       = TruckInfo_GetX();
+		y       = TruckInfo_GetY();
+		heading = TruckInfo_GetHeading();
+		sn      = sinf(Tools_circular2rad(heading));
+		cs      = cosf(Tools_circular2rad(heading));
+
+		Ars408_PreMain(&conti.ars408,x, y, heading, cs, sn);
+
+	}
+	else
+	{
+		// do nothing
+	}
+}
+
+//---------------------------------------------------------------------------
+/**
+ * メイン
+ */
+//---------------------------------------------------------------------------
+void Ars408Manager_Main(void)
+{
+	// レーダ電源のメインルーチン
+//	LuxPower_Main();
+
+	if( conti.valid == TRUE )
+	{
+		// LUXの起動チェック
+		Ars408Manager_CheckIfArs408IsReady();
+
+		Ars408_Main(&conti.ars408);
+
+		// キャリブレーション
+//      LuxAngleCalib_Main();
+
+		// ヘッドライト
+		Ars408Manager_HeadlightControl();
+
+		// 故障診断
+		Ars408Manager_Diagnosis(&conti.ars408);
+
+		// 電源コントロール
+//		Ars408Manager_PowerControl();
+	}
+	else
+	{
+		// do nothing
+	}
+}
+
+void Ars408Manager_PostMain(void)
+{
+	if( conti.valid == TRUE )
+	{
+		Ars408_PostMain(&conti.ars408);
+
+//		LuxPower_PostMain();
+	}
+}
+
+
+//---------------------------------------------------------------------------
+/**
+ * RPC受信用コールバック関数
+ */
+//---------------------------------------------------------------------------
+void Ars408Manager_ReceiveStatusMsg(const rpc_T *rpc)
+{
+	Ars408Diagnosis_ReceiveError(&conti.ars408, (uint8*)&rpc->args[0]);
+}
+//---------------------------------------------------------------------------
+/**
+ * RPC受信用コールバック関数
+ * クリップターゲットの受信
+ */
+//---------------------------------------------------------------------------
+void Ars408Manager_ReceiveClippedTargetMsg(const rpc_T *rpc)
+{
+	Ars408_ReceiveClippedTargetMsg(&conti.ars408, (uint8*)&rpc->args[0]);
+
+	////packetを全て受信した場合、bufferから取り出す。
+	//if(conti.ars408_buffer.packetAllSetFlag == TRUE){
+	//	memcpy( &(conti.ars408), &(conti.ars408_buffer), sizeof(StructArs408));
+	//}
+	//else{
+	//	//do nothing 
+	//}
+}
+
+
+
+//---------------------------------------------------------------------------
+/**
+ * @return 
+ */
+//---------------------------------------------------------------------------
+sint16 Ars408Manager_GetTargetNum(void)
+{
+	return(conti.ars408.targetNum);
+
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+StructArs408TargetInfo* Ars408Manager_GetTarget(sint16 index)
+{
+	StructArs408TargetInfo *ptr;
+
+    ptr = Ars408_GetTrackData(&conti.ars408, index);
+
+    return(ptr);
+}
+
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+StructStatusMsgARS408* Ars408Manager_GetStatus(void)
+{
+    return(&conti.ars408.error);
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+void Ars408Manager_Enable(void)
+{
+    conti.valid = TRUE;
+}
+void Ars408Manager_Disable(void)
+{
+    conti.valid = FALSE;
+}
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+void Ars408Manager_DiagnosisEnable(void)
+{
+    conti.disableDiag = FALSE;  // 故障診断有効
+}
+void Ars408Manager_DiagnosisDisable(void)
+{
+    conti.disableDiag = TRUE;   // 故障診断無視
+}
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+bool Ars408Manager_IsLuxOperated(void)
+{
+	return(conti.operation);
+}
+
+
+//---------------------------------------------------------------------------
+/**
+ * クリッピングされたターゲットがあるかどうか
+ */
+//---------------------------------------------------------------------------
+bool Ars408Manager_GetTargetValidFlag(void)
+{
+	bool flag;
+	sint32 range;
+
+	range = conti.ars408.closestRange;
+
+	if( ( range >= 200000 ) || ( range <= 0 ) )
+	{
+		flag = FALSE;
+	}
+	else
+	{
+		flag = TRUE;
+	}
+
+	return(flag);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * クリッピングされたターゲットのうち、最短距離
+ * @return [mm]
+ */
+//---------------------------------------------------------------------------
+sint32 Ars408Manager_GetClosestRange(void)
+{
+	return(conti.ars408.closestRange);
+}
+
+sint16 Ars408Manager_GetClosestTargetIndex(void)
+{
+	return(conti.ars408.closestIndex);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * レーダインストールされているかどうか
+ */
+//---------------------------------------------------------------------------
+bool Ars408Manager_isRadarAvailable(void)
+{
+	return(conti.ars408.valid);
+}
+
+
+//---------------------------------------------------------------------------
+/**
+ * 
+ */
+//---------------------------------------------------------------------------
+void Ars408Manager_SetDebugFlag(bool flag)
+{
+    conti.debugFlag = flag;
+}
+bool Ars408Manager_GetDebugFlag(void)
+{
+    return(conti.debugFlag);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * LUXが正常かどうか
+ */
+//---------------------------------------------------------------------------
+bool Ars408Manager_Ars408IsHealthy(void)
+{
+	return(conti.ars408.healthy);
+}
+
+uint16 Ars408Manager_GetErrMsgRecieveCounter(void)
+{
+	return(conti.ars408.packetCounter);
+}
+
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+// プライベート関数
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+static void Ars408Manager_Diagnosis(StructArs408 *pArs)
+{
+    bool ret1;
+    bool rbiRet1;
+    bool checkArsCom;
+	sint16 engineStatus,debugCounter;
+    pArs->healthy = TRUE;
+    checkArsCom = FALSE;
+	engineStatus   = Engine_GetStatus();	
+
+	debugCounter = 0;
+
+	if(engineStatus == ON){
+        // RBIの起動チェック
+        if( Ars408Diagnosis_CheckRbiReady(pArs) == TRUE )  // 0xE53
+        {
+			debugCounter++;
+            // Safety - RBIの通信チェック
+            if( Ars408Diagnosis_CheckSafetyRbiCommunication(pArs) == TRUE )  // 0xE52
+            {
+
+				debugCounter++;
+                //PowerCycle用にRBI-ARS408の通信チェックは常に行う
+                checkArsCom = Ars408Diagnosis_CheckRbiArsCommunication(pArs);
+
+                if( conti.contiReady == TRUE )
+                {
+					debugCounter++;
+                    // ARS408のモードチェック
+                    if( Ars408Diagnosis_CheckArsOperationMode(pArs) == TRUE )  // 0xE5C
+                    {
+						debugCounter++;
+                        // RBI - ARS408の通信チェック
+                        if( checkArsCom == TRUE )  // 0xE51
+                        {
+							debugCounter++;
+							/*
+							if( (pArs->pos==posMmr1cRight)||(pMmr1c->pos==posMmr1cLeft) )
+							{
+								conti.powerCycleReq.mmr1cRbiComm[position] = OFF;
+							}
+							*/
+
+                            // ARS408本体の故障診断
+                            ret1 = Ars408Diagnosis_SelfDiagnosisError1(pArs);
+
+                            // 本体の故障の場合電源をリセット
+                            if( ret1 == FALSE )
+                            {
+                               //conti.powerCycleReq.mmr1cSelfDiag = ON;
+                               pArs->healthy = FALSE;
+                            }
+                            else
+                            {
+								debugCounter++;
+								//mmr1c.powerCycleReq.mmr1cSelfDiag = OFF;
+							}
+                        }
+                        else
+                        {
+							//if( (pMmr1c->pos==posMmr1cRight)||(pMmr1c->pos==posMmr1cLeft) )
+							//{
+							//	mmr1c.powerCycleReq.mmr1cRbiComm[position] = ON;
+							//}
+                            pArs->healthy = FALSE;
+                        }
+
+                        // MMR1Cからのターゲット情報通信チェック
+                        //if( Ars408Diagnosis_CheckTrackMsgCommunication(pArs) == TRUE )    // 0xE52
+                        //{
+						//	debugCounter++;
+                        //    // 正常
+                        //    //mmr1c.powerCycleReq.mmr1cTrackMsgComm = OFF;
+                        //}
+                        //else
+                        //{
+//						//	mmr1c.powerCycleReq.mmr1cTrackMsgComm = ON;
+                        //    pArs->healthy = FALSE;
+                        //}
+
+                    }
+                    else
+                    {
+                        pArs->healthy = FALSE;
+                    }
+                }
+                else
+                {
+                    pArs->healthy = FALSE;
+                }
+            }
+            else
+            {
+                pArs->healthy = FALSE;
+            }
+		}
+        else
+        {
+            pArs->healthy = FALSE;
+        }
+
+    }
+    else
+    {
+        pArs->healthy = FALSE;
+    }
+
+	sprintf(arsDebugStr,"diagnosis:%d",debugCounter);
+	CanDebugPrintf(arsDebugStr);
+
+//
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 障害物検知時のヘッドライトの点灯
+ */
+//---------------------------------------------------------------------------
+static void Ars408Manager_HeadlightControl(void)
+{
+    if( conti.ars408.targetNum != 0)
+    {
+        //とにかく何かを検知したらヘッドライトをつける
+		//U48ではヘッドライトとハイビーム両方点灯させる
+        Headlight_Flash();
+		Headlight_BeamFlash();
+    }
+    else
+    {
+        //
+    }
+}
+
+//---------------------------------------------------------------------------
+/**
+ * @return
+ */
+//---------------------------------------------------------------------------
+static StructArs408* Ars408Manager_GetArx408Object(void)
+{
+    return(&conti.ars408);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * @return
+ */
+//---------------------------------------------------------------------------
+static void LuxManger_PowerControl(void)
+{
+    static sint16 egStatPrev = OFF;
+    sint16 egStat;
+
+    // Engineの状態
+    egStat = Engine_GetStatus();
+
+	/*
+    if( egStat == OFF )
+    {
+        // Engine停止したらレーダ電源OFF
+        if( egStatPrev == ON )
+        {
+            LuxPower_Off();
+        }
+        else
+        {
+            //
+        }
+    }
+    else
+    {
+        // EngineONまたはFAILでレーダ電源をON
+        if( egStatPrev == OFF )
+        {
+            LuxPower_On();
+        }
+        else
+        {
+            //
+        }
+    }
+	*/
+
+    egStatPrev = egStat;
+}
+
+
+
+//---------------------------------------------------------------------------
+/**
+ * @return
+ */
+//---------------------------------------------------------------------------
+static void Ars408Manager_PowerControl(void)
+{
+
+}
+
+//---------------------------------------------------------------------------
+/**
+ * LUX起動チェック
+ */
+//---------------------------------------------------------------------------
+static void Ars408Manager_CheckIfArs408IsReady(void)
+{
+	
+}
+
+
+bool Ars408Manager_GetArs408Ready(void)
+{
+	return(conti.contiReady);
+}

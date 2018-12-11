@@ -1,0 +1,813 @@
+// -----------------------------------------------------------------
+// RBIのシミュレータ
+//
+// -----------------------------------------------------------------
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "CContiRbi.h"
+#include "RadarConfig.h"
+
+
+extern int    LandMarkGetNumber(void);
+extern int    LandMarkIsEnable(int index);
+extern double LandMarkGetX(int index);
+extern double LandMarkGetY(int index);
+extern double LandMarkGetEsrPower(int index);
+extern sint16 LandMarkGetSrrPower(int index);
+extern int    LandMarkGetId(int index);
+
+extern double EmvGetEmvXpos(int index);
+extern double EmvGetEmvYpos(int index);
+extern bool   EmvIsValidPos(int index);
+extern int    EmvGetEmvNum(void);
+extern void   EmvSetEmvDistance(int index, double distance);
+extern double EmvGetEmvXCorner(int index, int ii);
+extern double EmvGetEmvYCorner(int index, int ii);
+
+extern double getDeltaHeading(void);
+
+extern long   getXint(void);
+extern long   getYint(void);
+extern short  getHeadingInt(void);
+extern short  getSpeedInt(void);
+extern double getTruckSpeed(void);
+
+extern double ndr_rand(double ave, double std);
+extern double pi_to_pi(double angle);
+extern double deg2rad(double deg);
+extern double rad2deg(double rad);
+
+extern double GetEsrPowerNoiseSigma(void);
+extern double GetEsrRangeNoiseSigma(void);
+extern double GetEsrAngleNoiseSigma(void);
+extern bool   IsAddEsrNoise(void);
+extern double getTruckSpeed(void);
+
+//---------------------------------------------------------------------------
+// コンストラクタ
+//---------------------------------------------------------------------------
+CContiRbi::CContiRbi()
+{
+	#ifdef _CONTIRBI_SIMULATOR
+	can_node_b[0] = DRI_NAV_B;
+	can_node_b[1] = SAFETY_B;
+	can_node_b[2] = PCTOOL;
+
+	rpcusertable2[0].rpcno = ARS408_TRACK_MSG;
+	rpcusertable2[0].size  = 0;
+	rpcusertable2[0].arg   = (char*)&RpcTrackDataMsg;
+
+	rpcusertable2[1].rpcno = ARS408_TRACK_REQ;
+	rpcusertable2[1].size  = 0;
+	rpcusertable2[1].arg   = (char*)NULL;
+
+	rpcusertable2[2].rpcno = CR_ASK_VERSION;
+	rpcusertable2[2].size  = 0;
+	rpcusertable2[2].arg   = (char*)NULL;
+
+	rpcusertable2[3].rpcno = CR_ANSWER_VERSION;
+	rpcusertable2[3].size  = 0;
+	rpcusertable2[3].arg   = (char*)&RpcVersionInfo;
+
+	rpcusertable2[4].rpcno = ARS408_STATUS_MSG;
+	rpcusertable2[4].size  = 0;
+	rpcusertable2[4].arg   = (char*)&RpcErrorDataMsg;
+
+	rpcusertable2[5].rpcno = ARS408_FILTER_CFG;
+	rpcusertable2[5].size  = 0;
+	rpcusertable2[5].arg   = (char*)NULL;
+
+	rpcusertable2[6].rpcno = 0;
+	rpcusertable2[6].size  = 0;
+	rpcusertable2[6].arg   = (char*)NULL;
+
+	#endif
+}
+
+//---------------------------------------------------------------------------
+// 初期化
+//---------------------------------------------------------------------------
+void  CContiRbi::RbiInit(uchar id, double x, double y, double deg)
+{
+	#ifdef _CONTIRBI_SIMULATOR
+
+		// CANのプロトコルをセット
+		can.RpcSetProtocolType(CAN_mRPC);
+
+		// RPCログファイルのオープン
+		can.OpenLogFile("log/CanCONTIRBI_log.txt");
+
+		CanActiveFlag = OFF;	// まだ動作していない
+
+		// ノードテーブルをクリア
+		for(int i=0;i<MAX_NUM_NODE;i++){ can.RpcUserNodeTable[i]=255; }
+
+		// 自己IDとリトライ回数をセット
+		rpc_userinfo.CanSelfId = id;	// set self CAN/RPC ID
+		rpc_userinfo.retry = 5;			// set retry times
+
+		// 通信するノードを設定
+		for(int i=0;i<sizeof(can_node_b);i++)
+		{
+			can.RpcUserNodeTable[i] = can_node_b[i];
+		}
+		// RPC初期化(RPCテーブルをセット)
+		can.RPCinit(&rpc_userinfo,rpcusertable2);
+
+		CanActiveFlag  = ON;
+
+		// RPC送信バッファの初期化
+		memset((void*)&RpcTrackDataMsg,0,sizeof(RpcTrackDataMsg));
+
+		// コンチネンタルレーダの座標系
+		local.xpos  = x;
+		local.ypos  = y;
+		local.theta = deg2rad(deg);
+
+		// ステータス初期値
+		RadarData.status.timeStamp   = 0;  // 
+
+	#endif
+}
+
+//Radarの初期化
+void CContiRbi::RadarInit(void)
+{
+	
+}
+
+//---------------------------------------------------------------------------
+// 終了
+//---------------------------------------------------------------------------
+void  CContiRbi::RbiClose(void)
+{
+	#ifdef _CONTIRBI_SIMULATOR
+
+		CanActiveFlag=OFF;
+
+		can.BusOnOff(BUSOFF,_500KBPS);
+		can.CanClose();				// CANを閉じる
+
+	#endif
+}
+
+//---------------------------------------------------------------------------
+// RBIメインルーチン
+//---------------------------------------------------------------------------
+void  CContiRbi::RbiMain(void)
+{
+	#ifdef _CONTIRBI_SIMULATOR
+
+		// RPC受信
+		RpcUserMsg	msg;
+
+		while( can.RpcUserRead( &msg ) == ON )
+		{
+			switch(msg.rpcno)
+			{
+				case CR_ASK_VERSION:
+
+					// RBIのバージョン情報送信
+					RbiReceiveAskVersion(&msg.buf[0], msg.size, msg.sender);
+					break;
+
+
+				default:
+					break;
+			}
+		}
+
+		// ステータス情報の送信(10Hz)
+        RadarStatus();
+
+		// トラック情報送信
+		RbiSendTrackMsg();
+
+		// CAN/RPC通信
+		ServiceCANBus();
+
+	#endif
+}
+
+//---------------------------------------------------------------------------
+// TrackDataの送信
+//---------------------------------------------------------------------------
+void CContiRbi::RbiSendTrackMsg(void)
+{
+	sint16 xpos, ypos;
+	sint16 vx, vy;
+	sint16 length, width;
+	uint8  rcs;
+	uint32 tmp;
+
+	sint16 frameNumber = 1;		// 最初は1番目
+	sint16 totalFrameNum = 0;
+	sint16 num;
+
+	if( toggle )
+	{
+		// レーダモジュールからデータを取得し、送信バッファにコピー
+	    //レーダモジュールには、errorBitをセットするDiagnosis機能が必要
+		RpcTrackDataMsg.timeStamp    = DataUpDown(RadarData.timeStamp);
+
+		totalFrameNum = (sint16)RadarData.num / 15 + 1;		// フレーム数
+
+		if( frameNumber < totalFrameNum )
+		{
+			num = 15;
+		}
+		else
+		{
+			num = (sint16)RadarData.num % 15;
+		}
+
+		RpcTrackDataMsg.targetNum    = (uint8)num;
+		RpcTrackDataMsg.frameListNum = ( (((uint8)totalFrameNum&0x0f)<<4) | ((uint8)frameNumber&0x0f) );
+
+		for( int i=0; i<num;i++)
+		{
+			xpos = (sint16)(RadarData.tracks[i].xpos / 0.2);
+			ypos = (sint16)(RadarData.tracks[i].ypos / 0.2);
+			vx   = (sint16)(RadarData.tracks[i].vx / 0.25);
+			vy   = (sint16)(RadarData.tracks[i].vy / 0.25);
+
+			rcs     = (sint8)(RadarData.tracks[i].rcs / 0.5);
+			length  = (sint16)(RadarData.tracks[i].length / 0.2);
+			witdh   = (sint16)(RadarData.tracks[i].width / 0.2);
+
+			RpcTrackDataMsg.tracks[i].xpos    = DataUpDown(xpos);
+			RpcTrackDataMsg.tracks[i].ypos    = DataUpDown(ypos);
+			RpcTrackDataMsg.tracks[i].vx      = DataUpDown(vx);
+			RpcTrackDataMsg.tracks[i].vy      = DataUpDown(vy);
+			RpcTrackDataMsg.tracks[i].rcs     = rcs;
+			RpcTrackDataMsg.tracks[i].id      = RadarData.tracks[i].id;
+			RpcTrackDataMsg.tracks[i].length  = DataUpDown(length);
+			RpcTrackDataMsg.tracks[i].width   = DataUpDown(witdh);
+			tmp = (uint32)( RadarData.tracks[i].DistLong_rms & 0x1f) 
+                | (uint32)((RadarData.tracks[i].measState    & 0x07)<<5 ) 
+                | (uint32)((RadarData.tracks[i].DistLat_rms  & 0x1f)<<8 ) 
+                | (uint32)((RadarData.tracks[i].ProbExist    & 0x07)<<13) 
+                | (uint32)((RadarData.tracks[i].Orient_rms   & 0x1f)<<16) 
+                | (uint32)((RadarData.tracks[i].Object_Class & 0x07)<<21) );
+			RpcTrackDataMsg.tracks[i].quality = DataUpDown(tmp); 
+			
+		}
+
+	    int size = 4 + 16 * num;
+
+		// 送信
+		can.RpcUserCallSizePrior( CONTI_TRACK_MSG, SAFETY_B, 0, size, PRIOR4 );
+
+		frameNumber++;
+
+	}
+
+}
+
+
+//---------------------------------------------------------------------------
+// レーダのグローバル座標を計算
+//---------------------------------------------------------------------------
+void CContiRbi::Radar_CalcGlobalPosition(double gx, double gy, double gt)
+{
+	double xtmp,ytmp,ttmp;
+
+	// 回転移動
+	xtmp = local.xpos * cos(gt) - local.ypos * sin(gt);
+	ytmp = local.xpos * sin(gt) + local.ypos * cos(gt);
+
+	// 平行移動
+	global.xpos  = xtmp + gx;
+	global.ypos  = ytmp + gy;
+	global.theta = pi_to_pi(local.theta + gt);
+}
+
+
+//---------------------------------------------------------------------------
+/**
+ * レーダーのデータ（ランドマーク検出）をセット （レーダモジュール）
+ */
+//---------------------------------------------------------------------------
+void CContiRbi::RadarMain(double pos_x, double pos_y, double yaw)
+{
+    double dxr, dyr;
+	double range, direction;
+	double max_range = 50.0;//[m]
+	double max_angle = 90.0;//[deg]
+
+	double noizeRange, noizePower, rangeSigma, powerSigma;
+    int   i,j,n;
+    int   emvNum, lmnNum, num;
+    bool  bufFulFlag;
+
+	StructContiObjectInfo objBin[MAX_CONTI_TARGETS];	// バッファ
+
+
+	// レーダの位置
+	Radar_CalcGlobalPosition( pos_x, pos_y, yaw );
+
+	bufFulFlag = false;
+
+	toggle ^= 1;
+	if( toggle )
+	{
+		// 検出フラグを一旦下げる
+		for( j=0; j<MAX_CONTI_TARGETS; j++ )
+		{
+			RadarData.tracks[j].observed = OFF;
+		}
+		
+		num = 0;
+
+		lmnNum = LandMarkGetNumber();
+	    for( n=0; n < lmnNum; n++ )	//すべてのランドマークに対し距離と方位を計算
+		{
+			if( ( LandMarkIsEnable(n) == 1 ) && ( -64.0 < LandMarkGetEsrPower(n) ) && ( LandMarkGetEsrPower(n) < 63.5 ) )
+			{
+				// レーダ位置からの相対座標
+		        dxr = LandMarkGetX(n) - global.xpos;
+		        dyr = LandMarkGetY(n) - global.ypos;
+
+		        // 120m以上離れているものはこの時点で除外
+		        if( ( abs(dxr) < 120.0 ) && ( abs(dyr) < 120.0 ) )
+				{
+			        // レーダからの距離
+			        distance = sqrt(dxr*dxr + dyr*dyr);
+			        
+			        // レーダから見た方位角
+					if( abs(dxr) < 1e-6 )
+					{
+						if( dyr > 0.0 ) { bearing = PI2 - yaw; }
+						else { bearing = -PI2 - yaw };
+					}
+					else
+					{
+				        bearing = atan2(dyr,dxr) - yaw;
+			        }
+
+					// ノイズ付加
+					if( IsAddEsrNoise() == true )
+					{
+						rangeSigma = GetEsrRangeNoiseSigma();  // [m]
+						powerSigma = GetEsrPowerNoiseSigma();  // [dB]
+
+						noizeRange = ndr_rand(0.0, rangeSigma);
+						noizePower = ndr_rand(0.0, powerSigma);
+					}
+					else
+					{
+						noizeRange   = 0.0;
+						noizePower   = 0.0;
+					}
+					
+					distance += noizeRange;
+					bearing  += noizeBearing;
+
+					bearing = pi_to_pi(bearing);
+
+
+					// レーダ座標に変換する
+			        dxr = distance * cos(bearing);
+			        dyr = distance * sin(bearing);
+
+			        // 検出範囲にあるランドマークを抜き出す。
+					if( ( 1.0 < distance )
+					 && ( distance < max_range) 
+					 && ( fabs(bearing) < deg2rad(max_angle))
+					 )
+					{
+						// 一次バッファにコピー
+		                objBin[num].range   = distance;  // [m]
+		                objBin[num].bearing = bearing;   // [rad]
+		                objBin[num].id      = LandMarkGetId(n);
+		                objBin[num].rcs     = LandMarkGetEsrPower(n);
+		                objBin[num].xpos    = dxr;
+		                objBin[num].ypos    = dyr;
+						
+						num++;
+		                if( num >= MAX_CONTI_TARGETS )
+		                {
+							bufFulFlag = true;
+							break;
+						}
+			        }
+				}
+			}
+		}
+
+	    // 検出されたターゲットについて、リストと比較
+	    for( n=0; n < num; n++ )
+	    {
+			// 対応するオブジェクトが存在するか、リストをチェック
+			index = -1;
+			for( j=0; j<RadarData.num; j++ )
+			{
+				if( ( RadarData.tracks[j].id && objBin[n].id ) && ( objBin[n].id != -1 ) )
+				{
+					index = j;
+					break;
+				}
+			}
+
+			if( index != -1 )  // 前回登録済
+			{
+				// 更新
+			}
+			else
+			{
+				// 新規
+				index = ContiSim_GetEmptyBin();
+			}
+
+			if( index != -1 )
+			{
+				RadarData.tracks[index].xpos		= objBin[n].xpos;
+				RadarData.tracks[index].ypos		= objBin[n].ypos;
+				RadarData.tracks[index].vx			= objBin[n].xpos - RadarData.tracks[index].xpos;
+				RadarData.tracks[index].vy			= objBin[n].ypos - RadarData.tracks[index].ypos;
+				
+				RadarData.tracks[index].rcs			= objBin[n].rcs;//tracks[].power -> tracks[].rcs
+				RadarData.tracks[index].id    		= (uint8)objBin[n].id;
+
+				RadarData.tracks[index].length      = 1.0;  // [m]
+				RadarData.tracks[index].width       = 2.0;  // [m]
+				RadarData.tracks[j].DistLong_rms    = 0.0;
+				RadarData.tracks[j].DistLat_rms     = 0.0;
+				RadarData.tracks[j].measState       = 0.0;
+				RadarData.tracks[j].Orientation_rms = 0.0;
+				RadarData.tracks[j].ProbExist       = 0.0;
+				RadarData.tracks[j].Object_Class    = 0.0;
+
+				RadarData.tracks[index].range		= objBin[n].range;
+				RadarData.tracks[index].bearing		= objBin[n].bearing;
+				RadarData.tracks[index].observed	= ON;
+			}
+			else
+			{
+				// buffer full
+				
+			}
+		}
+
+	    // 現在登録中のターゲットで、今回検出していないものは削除
+		for( j=0; j<MAX_CONTI_TARGETS; j++ )
+	    {
+			if( ( RadarData.tracks[j].observed == OFF ) && ( RadarData.tracks[j].id != -1 ) )
+			{
+				RadarData.tracks[j].xpos	   		= 0.0;
+				RadarData.tracks[j].ypos	   		= 0.0;
+				RadarData.tracks[j].vx		   		= 0.0;
+				RadarData.tracks[j].vy		   		= 0.0;
+				RadarData.tracks[j].range	   		= 0.0;
+				RadarData.tracks[j].bearing	   		= 0.0;
+				RadarData.tracks[j].rcs				= 0.0;
+
+				RadarData.tracks[j].length          = 0.0;  // [m]
+				RadarData.tracks[j].width           = 0.0;  // [m]
+				RadarData.tracks[j].DistLong_rms    = 0.0;
+				RadarData.tracks[j].DistLat_rms     = 0.0;
+				RadarData.tracks[j].measState       = 0.0;
+				RadarData.tracks[j].Orientation_rms = 0.0;
+				RadarData.tracks[j].ProbExist       = 0.0;
+				RadarData.tracks[j].Object_Class    = 0.0;
+
+				RadarData.tracks[j].id      = -1;
+			}
+		}
+
+		// オブジェクト数の計算
+		RadarData.num = 0;
+		for(int i=0; i<MAX_CONTI_TARGETS; i++ )
+		{
+			if( RadarData.tracks[i].observed == ON ) { RadarData.num++; }
+		}
+
+	    targetNum = RadarData.num;
+
+		RadarData.timeStamp++;
+
+/*
+
+		if( bufFulFlag == false )
+		{
+			emvNum = EmvGetEmvNum();
+			for(int i=0; i<emvNum; i++ )
+			{
+			    if( EmvIsValidPos(i) == true )
+			    {
+			        dxr = EmvGetEmvXpos(i) - global.xpos;
+		        	dyr = EmvGetEmvYpos(i) - global.ypos;
+
+			        range = sqrt(dxr*dxr + dyr*dyr);
+			        angle = atan2( dyr, dxr) - yaw;
+
+			        dxt = dxr * cos(-yaw) - dyr * sin(-yaw);
+			        dyt = dxr * sin(-yaw) + dyr * cos(-yaw);
+
+			        // 検出範囲にあるEMVを抜き出す。
+					if( (range < max_range) && (fabs(angle) < deg2rad(max_angle)))
+					{
+						if( IsAddEsrNoise() == true )
+						{
+						// ノイズ付加
+							rangeSigma = GetEsrRangeNoiseSigma();  // [m]
+							powerSigma = GetEsrPowerNoiseSigma();  // [dB]
+
+							noizeRange   = ndr_rand(0.0, rangeSigma);
+							noizePower   = ndr_rand(0.0, powerSigma);
+						}
+						else
+						{
+							noizeRange   = 0.0;
+							noizePower   = 0.0;
+						}
+
+						RadarData.tracks[RadarData.num].xpos = (sint16)(dxt/0.2);  // [0.2 m]
+						RadarData.tracks[RadarData.num].ypos = (sint16)(dyt/0.2);  // [0.2 m]
+						
+						RadarData.tracks[RadarData.num].power = (sint8)(LandMarkGetEsrPower(n) / 0.5);  [0.5dB]
+						RadarData.tracks[RadarData.num].id    = RadarData.num;
+
+						RadarData.tracks[RadarData.num].length  = 20;  // [0.2m] -->4m
+						RadarData.tracks[RadarData.num].width   = 10;  // 
+						RadarData.tracks[RadarData.num].quality = 0;
+
+		                RadarData.num++;
+		                if( RadarData.num >= MAX_CONTI_TARGETS )
+		                {
+							bufFulFlag = true;
+							break;
+						}
+		            }
+			    }
+			}
+		}
+*/
+	}
+
+}
+
+void CContiRbi::RadarStatus(void)
+{
+	uint16 info0;
+	uint8  info1, info2, info3;
+
+	RpcErrorDataMsg.timeStamp   = DataUpDown(RadarData.timeStamp);
+
+	info0 = 
+		( (RadarData.status.RadarState_NVMReadStatus & 0x01)
+		| ((RadarData.status.NVMWriteStatus          & 0x01)<< 1 )
+		| ((RadarData.status.MaxDistanceCfg          & 0x3f)<< 2 )
+		| ((RadarData.status.Persistent_Error        & 0x01)<<12 )
+		| ((RadarData.status.Interface               & 0x01)<<13 )
+		| ((RadarData.status.Temperature_Error       & 0x03)<<14 ) );
+
+	info1 = 
+		( (RadarData.status.Temporary_Error          & 0x01) 
+		| ((RadarData.status.Voltage_Error           & 0x01)<<1 )
+		| ((RadarData.status.SensorID                & 0x07)<<2 )
+		| ((RadarData.status.RaderPowerCfg           & 0x07)<<5 ) );
+
+	info2 =
+		(  (RadarData.status.CtrlRelayCfg            & 0x03)
+		| ((RadarData.status.OutputTypeCfg           & 0x03)<<2 )
+		| ((RadarData.status.SendQualityCfg          & 0x01)<<4 )
+		| ((RadarData.status.SendExtInfoCfg          & 0x01)<<5 )
+		| ((RadarData.status.MotionRxState           & 0x03)<<6 ) );
+
+	info3 =
+		( (RadarData.status.RCS_Threshold            & 0x07)
+		| ((RadarData.status.I_Radar_status          & 0x01)<<3 ) );
+
+	RpcErrorDataMsg.statusInfo0 = DataUpDown(info0);
+	RpcErrorDataMsg.statusInfo1 = DataUpDown(info1);//DataUpDownがinfo0にしか追加されていなかったので追加
+	RpcErrorDataMsg.statusInfo2 = DataUpDown(info2);//DataUpDownがinfo0にしか追加されていなかったので追加
+	RpcErrorDataMsg.statusInfo3 = DataUpDown(info3);//DataUpDownがinfo0にしか追加されていなかったので追加
+	
+	// 送信
+	can.RpcUserCallSizePrior( CONTI_STATUS_MSG, SAFETY_B, 0, 7, PRIOR4 );
+}
+
+
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+uchar CContiRbi::GetSelfId(void)
+{
+	return(rpc_userinfo.CanSelfId);
+}
+
+
+
+void CContiRbi::RbiReceiveAskVersion(uint8 *msg, uint16 size, uint8 sender)
+{
+    uint8  command;
+    uchar  str[64];
+    bool   ret;
+
+    command = msg[0];
+
+	ret = RbiCrVersionSelectInfo(command,str);
+
+	if( ret == true )
+	{
+		// RBIは旧フォーマットのみ対応
+		RbiCrVersionSendMsg(command,str,sender);//旧フォーマットで送る
+	}
+}
+
+
+bool CContiRbi::RbiCrVersionSelectInfo(uint8 command, char* str)
+{
+	bool retVal = true;
+
+	switch(command)
+    {
+        // バージョン
+        case VERSION_OS:
+        	strcpy(str,"3.1.1_AHS");
+            break;
+        case VERSION_BOOT:
+        	strcpy(str,"Windows 2000");
+            break;
+        case VERSION_APP1:
+        	strcpy(str,"002.006.001");
+            break;
+        case VERSION_APP2:
+        	strcpy(str,"Ver1.2 003.001");
+            break;
+        case VERSION_APP3:
+        	strcpy(str,"RBI");
+            break;
+        case VERSION_APP4:
+        	strcpy(str,"hello");
+            break;
+        case VERSION_APPDATA1:
+        	strcpy(str,"my");
+            break;
+        case VERSION_APPDATA2:
+        	strcpy(str,"name");
+            break;
+        case VERSION_APPDATA3:
+        	strcpy(str,"is");
+            break;
+        case VERSION_APPDATA4:
+        	strcpy(str,"HAL");
+            break;
+
+        // 品番
+        case PRODUCT_NO_PROG:
+        	strcpy(str,"783920R722");
+            break;
+        case PRODUCT_NO_BOOT:
+        	strcpy(str,"komatsu");
+            break;
+        case PRODUCT_NO_BORAD:
+        	strcpy(str,"788070630300");
+            break;
+        case PRODUCT_NO_WHITE:
+        	strcpy(str,"788070600204");
+            break;
+        case PRODUCT_NO_ASSY:
+        	strcpy(str,"FFFFFFFFFFFF");
+            break;
+
+        // シリアル番号
+        case SERIAL_NO_BORAD:
+			if( GetSelfId() == RBI1 ) { strcpy(str,"100002"); }
+	        else if( GetSelfId() == RBI2 ) { strcpy(str,"100003"); }
+	        else { strcpy(str,"100004"); }
+            break;
+        case SERIAL_NO_WHITE:
+			if( GetSelfId() == RBI1 ) { strcpy(str,"100012"); }
+	        else if( GetSelfId() == RBI2 ) { strcpy(str,"100013"); }
+	        else { strcpy(str,"100014"); }
+            break;
+        case SERIAL_NO_ASSY:
+        	strcpy(str,"FFFFFF");
+            break;
+
+        // 製造年月日
+        case PRODUCT_DATE:
+        	strcpy(str,"1967.06.15");
+            break;
+
+        default:
+            retVal = false;
+            break;
+    }
+
+    return(retVal);
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 旧フォーマットでバージョンを返す
+ */
+void CContiRbi::RbiCrVersionSendMsg(uint8 type, uchar *str, uint8 sender)
+{
+    int i, len;
+
+    len = strlen((char*)str);
+	if( len > 32 ) len = 32;
+
+    RpcVersionInfo.type = type;
+    for(i=0;i<len;i++)
+    {
+        RpcVersionInfo.version[i] = str[i];
+    }
+
+	can.RpcUserCallSizePrior( CR_ANSWER_VERSION, sender, 0, len+1, PRIOR4 );
+}
+
+//---------------------------------------------------------------------------
+/**
+ * 新フォーマットでバージョンを返す
+ */
+void  CContiRbi::RbiCrVersionSendMsgEx(uint8 type, uchar *str, uint8 sender)
+{
+    int i, len;
+
+    len = strlen((char*)str);
+	if( len > 32 ) len = 32;
+
+    RpcVersionInfo.type = type;
+
+    for(i=0;i<len;i++)
+    {
+        RpcVersionInfo.version[i] = str[i];
+    }
+
+	RpcVersionInfo.version[len] = '\0';//終端文字を付加
+	RpcVersionInfo.version[len+1] = GetSelfId();
+
+	can.RpcUserCallSizePrior( CR_ANSWER_VERSION, sender, 0, len+3, PRIOR4 );
+}
+
+//---------------------------------------------------------------------------
+// ここから下は変更する必要なし
+//
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+void CContiRbi::setHandle(HWND hnd)
+{
+	can.aWHandle = hnd;
+}
+int CContiRbi::SetHandle(int handle)
+{
+	return(can.SetHandle(handle));
+}
+
+void CContiRbi::CanClose(void)
+{
+	can.CanClose();
+}
+
+int CContiRbi::GetHandle(void)
+{
+	return(can.GetHandle());
+}
+
+int CContiRbi::SetReceiveBuffer( long id, uchar *msg, uint size )
+{
+	return(can.SetReceiveBuffer(id,msg,size));
+}
+
+int CContiRbi::isCanExist(void)
+{
+	return(can.isCanExist());
+}
+//---------------------------------------------------------------------------
+// CAN通信を行うフラグ
+//---------------------------------------------------------------------------
+void CContiRbi::SetGpsCanONOFF(int flag)
+{
+	#ifdef _CONTIRBI_SIMULATOR
+		if(flag==ON)
+		{
+			can.BusOnOff(BUSON,_500KBPS);
+			CanActiveFlag=ON;
+		}
+		else if(flag==OFF)
+		{
+			CanActiveFlag=OFF;
+			can.BusOnOff(BUSOFF,_500KBPS);
+		}
+	#endif
+}
+int CContiRbi::GetGpsCanONOFF(void)
+{
+	return(CanActiveFlag);
+}
+
+int CContiRbi::ServiceCANBus(void)
+{
+	return(can.ServiceCANBus());
+}
+
+
+
+

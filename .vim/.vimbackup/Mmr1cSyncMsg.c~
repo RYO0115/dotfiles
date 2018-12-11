@@ -1,0 +1,65 @@
+/** 
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *
+ * KOMATSU "Front Runner" / AHS Embeded Controller Software
+ * Copyright (C) 2009 Komatsu Ltd. All rights reserved.
+ * 
+ *    $RCSfile: Mmr1cSyncMsg.c,v $
+ *    $Revision: 1.1.1.1 $
+ *    $Author: tojima $
+ *    $Date: 2009/09/15 06:36:19 $
+ *    $State: Exp $
+ *
+ *    @brief: Communication module with MMR1C
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+*/
+
+
+#include "ahscommon.h"
+#include "AppMain.h"
+#include "RpcManager.h"
+#include "Mmr1cRpcDef.h"
+#include "FurukawaCommon.h"
+#include "Mmr1cSyncMsg.h"
+#include "Mmr1cManager.h"
+
+//---------------------------------------------------------------------------
+/**
+ *
+ */
+//---------------------------------------------------------------------------
+
+#define PRIOR_FRBI 7 //設定箇所が見つからなかったため、ここで定義
+
+void Mmr1cSyncMsg_SendMsg(void)
+{
+	StructFurukawaTrackReq msg;
+
+	if( (AdtMain_GetMainCounter() % T_1SEC) == 3 )
+	{
+		// MMR1C計測するかどうか
+		if( Mmr1cManager_IsMmr1cOperated() == TRUE )
+		{
+			msg.request |= 0x03;
+		}
+		else
+		{
+			msg.request &= 0xFE;
+		}
+
+		// 送信
+		RpcManager_SendMsgNoAck( CAN_B,
+							MMR1C_TRACK_REQ,
+							FRBI,
+	                        PRIOR_FRBI,
+	                        1,	// size
+	                        (uint8*)&msg
+	                        );
+	}
+	else
+	{
+		//
+	}
+}
+
