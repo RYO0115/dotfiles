@@ -28,7 +28,7 @@ set formatoptions+=ro
 set backupdir=~/.vim/backup
 
 set hlsearch
-nnoremap <ESC><ESC>:nohlsearch<CR>
+nnoremap <ESC><ESC> :nohlsearch<CR>
 nnoremap <F3> :set hlsearch!<CR>
 
 set incsearch
@@ -51,8 +51,9 @@ set ruler
 "set nobackup
 
 set clipboard&
-"set clipboard+=unnamedplus
-set clipboard^=unnamedplus, autoselect
+set clipboard^=unnamed
+set clipboard^=unnamedplus
+"set clipboard^=unnamedplus
 "
 "set cursorcolumn"
 "

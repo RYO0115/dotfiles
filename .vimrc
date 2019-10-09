@@ -1,11 +1,10 @@
-set runtimepath+=~/.vim/
+set runtimepath+=~/dotfiles/.vim/
 runtime! bundle/neobundle.vim
 runtime! userautoload/init/*.vim
 runtime! userautoload/plugin/*.vim
 
 set backupdir=~/.vim/.vimbackup
 
-"windows kaoriyaópê›íË
 set noundofile
 set undodir=~/.vim/.undodir
 
@@ -15,3 +14,4 @@ if !has('gui_running')
 endif
 
 nnoremap <expr> gr ':Rgrep<CR>'
+
