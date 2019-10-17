@@ -1,4 +1,4 @@
-#dotfiles
+# dotfiles
 ## What is dotfiles
 This repo is a setting file for vim editor.
 This project is also set for Ubuntu, Mac (and also for Windows).
