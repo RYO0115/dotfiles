@@ -1,6 +1,6 @@
 # dotfiles
 ## What is dotfiles
-This repo is a setting file for vim editor.
+This pkg is a setting file for vim editor.
 This project is also set for Ubuntu, Mac (and also for Windows).
 
 Before trying this project, please check below settings.
@@ -48,7 +48,6 @@ Third, install dein.vim
 	sh installer.sh ~/.cache/dein
 
 At Last, reflesh your terminal.
-
 
 And now you can use this vim settings.
 
