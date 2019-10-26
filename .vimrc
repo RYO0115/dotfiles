@@ -8,6 +8,7 @@ set backupdir=~/.vim/.vimbackup
 set noundofile
 set undodir=~/.vim/.undodir
 
+set belloff=all
 
 if !has('gui_running')
     set timeout timeoutlen=1000 ttimeoutlen=50

@@ -51,4 +51,9 @@ At Last, reflesh your terminal.
 
 And now you can use this vim settings.
 
+If you want to use Code Completion, follow below steps.
+
+	sudo apt-get install python3-pip
+	sudo apt-get install --user pynvim
+
 

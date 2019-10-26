@@ -1,5 +1,6 @@
 nnoremap <space>. :<c-u>tabedit $MYVIMRC<CR>
 nnoremap <space>c :<c-u>tabedit ~/.vim/userautoload/init/control.vim<CR>
+
 nnoremap <space>m :<c-u>tabedit ~/.vim/userautoload/init/basic.vim<CR>
 nnoremap <space>h :<c-u>tabedit ~/.vim/vimcommand.txt<CR>
 inoremap jj <Esc>
@@ -111,3 +112,4 @@ noremap <Space>cg :<C-u>CD<CR>:vimgrep /<C-r><C-w>/ **/* \| cwin<CR>
 noremap <Space>g :<C-u>CDROOT<CR>:vimgrep /<C-r><C-w>/ **/* \| cwin<CR>
 
 "------------------------------------------"
+
