@@ -21,9 +21,20 @@ Like this,
 
 if these two were shown as "-", this means your vim cannot share the clipboard.
 
-To fix this, you have to uninstall your vim, and reinstall other vim.
+And also newest version of **dein.vim** which is used in after section, only supports from 8.0.
+So check your vim version with the same command,
 
-	sudo apt-get install vim-***
+	vim --version
+
+If vim version mentioned like below please skip to next section.
+
+	VIM - Vi IMproved 8.2
+
+If not, please install the newest version of vim.
+
+	sudo add-apt-repository ppa:jonathonf/vim
+	sudo apt-get update
+	sudo apt-get install vim
 
 Ubuntu's default vim is **vim-tiny** and this version cannnot use the clipboard.
 
@@ -38,8 +49,8 @@ First, git clone this repo to your pc.
 
 Second, make a symbolic link to your home directory.
 
-	ln -s .vimrc ~/Path/To/dotfiles/.vimrc
-	ln -s .vim ~/Path/To/dotfiles/.vim
+	ln -s ~/Path/To/dotfiles/.vimrc .vimrc
+	ln -s ~/Path/To/dotfiles/.vim .vim
 
 Third, install dein.vim
 
