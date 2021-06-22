@@ -40,6 +40,15 @@ Ubuntu's default vim is **vim-tiny** and this version cannnot use the clipboard.
 
 After you checked this, please move to next section.
 
+Addition:
+
+Newest version of vim looks like doesn't support clipboard.
+
+In this case, please install vim-gtk3.
+
+	sudo apt-get install vim-gtk3
+
+
 ## How to Use
 You need 4 steps before using this dotfiles
 
