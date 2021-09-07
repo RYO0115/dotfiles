@@ -74,6 +74,6 @@ And now you can use this vim settings.
 If you want to use Code Completion, follow below steps.
 
 	sudo apt-get install python3-pip
-	pip3 intall --user pynvim
+	pip3 install --user pynvim
 
 
